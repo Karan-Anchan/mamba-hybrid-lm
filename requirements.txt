@@ -1,0 +1,39 @@
+# ============================================================================
+#  Small Mamba-Transformer Hybrid LM — dependencies
+#  Target: RTX 5070 (Blackwell, sm_120) + Ryzen 7700, Windows 11, Python 3.11*
+#
+#  * IMPORTANT: mamba-ssm / causal-conv1d prebuilt wheels historically lag on
+#    new Python (3.13) + new CUDA arch (sm_120). See docs/ERROR_LOG.md E-0002.
+#    A Python 3.11 env is the safer bet for compiling the CUDA kernels.
+#
+#  Install torch FIRST from the CUDA 12.8 index, THEN the rest:
+#    pip install torch --index-url https://download.pytorch.org/whl/cu128
+#    pip install -r requirements.txt
+# ============================================================================
+
+# --- Core DL (install separately from cu128 index; pinned here for reference) ---
+# torch>=2.7            # must be a +cu128 build for Blackwell / RTX 5070
+
+# --- Model / SSM kernels ---
+# mamba-ssm>=2.2        # selective-scan CUDA kernels (may require build-from-source)
+# causal-conv1d>=1.4    # depthwise causal conv kernel used by Mamba blocks
+einops>=0.8
+
+# --- Data / tokenization ---
+datasets>=3.0
+tokenizers>=0.20
+transformers>=4.44      # GPT-2 BPE tokenizer + generation utilities for the demo
+numpy>=1.26
+
+# --- Attention backend (optional; SDPA is the always-available fallback) ---
+# flash-attn>=2.6       # optional; falls back to torch.nn.functional.scaled_dot_product_attention
+
+# --- Experiment tracking / metrics ---
+wandb>=0.18
+tqdm>=4.66
+
+# --- Demo ---
+streamlit>=1.38
+
+# --- Dev / testing ---
+pytest>=8.3

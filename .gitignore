@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# Data & artifacts (large, regenerable)
+data/*
+!data/.gitkeep
+checkpoints/
+*.bin
+*.safetensors
+*.pt
+*.ckpt
+wandb/
+runs/
+outputs/
+*.arrow
+
+# Tokenizer caches
+.cache/
+hf_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs (keep the human-authored docs, ignore machine logs)
+*.log
+logs/
