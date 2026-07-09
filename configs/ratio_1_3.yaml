@@ -1,0 +1,27 @@
+# Hybrid LM — attention:SSM = 1:3  (4 attention / 12 Mamba-2 layers)
+# Config family B-448x16-16k, locked by D-ARCH-01 (see scripts/count_params.py sweep).
+name: "hybrid-1:3"
+ratio: "1:3"
+
+# core dims (~52M total, ~46M non-embedding)
+vocab_size: 16000        # custom 16k BPE (trained in Week 1/2); keeps embedding small (~7.2M)
+d_model: 448             # 7 attn heads x 64
+n_layers: 16             # 16-layer period enables clean 1:3 / 1:7 / 1:15
+tie_embeddings: true
+
+# attention mixer
+head_dim: 64
+attn_bias: false
+
+# mamba-2 mixer
+expand: 2                # d_inner = 896 (14 mamba heads x 64)
+d_state: 128
+mamba_headdim: 64
+d_conv: 4
+n_groups: 1
+
+# swiglu mlp (on every layer)
+mlp_ratio: 2.6667        # ~8/3 -> hidden rounded to multiple_of
+mlp_multiple_of: 64
+mlp_bias: false
+mlp_on_every_layer: true

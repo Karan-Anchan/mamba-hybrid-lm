@@ -1,0 +1,28 @@
+# Hybrid LM — attention:SSM = 1:15  (1 attention / 15 Mamba-2 layers)
+# Config family B-448x16-16k, locked by D-ARCH-01 (see scripts/count_params.py sweep).
+# This is the "mostly-Mamba with a single global-attention layer" extreme of the sweep.
+name: "hybrid-1:15"
+ratio: "1:15"
+
+# core dims (~54M total, ~47M non-embedding)
+vocab_size: 16000
+d_model: 448
+n_layers: 16
+tie_embeddings: true
+
+# attention mixer
+head_dim: 64
+attn_bias: false
+
+# mamba-2 mixer
+expand: 2
+d_state: 128
+mamba_headdim: 64
+d_conv: 4
+n_groups: 1
+
+# swiglu mlp (on every layer)
+mlp_ratio: 2.6667
+mlp_multiple_of: 64
+mlp_bias: false
+mlp_on_every_layer: true
