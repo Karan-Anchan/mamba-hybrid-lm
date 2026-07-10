@@ -87,13 +87,14 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 pip install torch --index-url https://download.pytorch.org/whl/cu128
 pip install -r requirements.txt
 
-# 3. prepare data (TinyStories for a quick smoke test)
-python scripts/prepare_data.py --dataset tinystories
+# 3. train the 16k tokenizer, then tokenize TinyStories into uint16 memmap shards
+python -m src.data.train_tokenizer --dataset tinystories --docs 100000 --vocab 16000
+python -m src.data.prepare_data   --dataset tinystories --train-docs 50000 --val-docs 22000
 
 # 4. sanity-check the parameter budget for a config
 python scripts/count_params.py --config configs/ratio_1_3.yaml
 
-# 5. train
+# 5. train  (coming soon — Week 2/3)
 python -m src.train.train --config configs/ratio_1_3.yaml
 ```
 

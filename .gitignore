@@ -10,6 +10,10 @@ env/
 # Data & artifacts (large, regenerable)
 data/*
 !data/.gitkeep
+# ...but keep the trained tokenizer: it's tiny and makes the repo reproducible
+!data/tokenizer/
+data/tokenizer/*
+!data/tokenizer/tokenizer.json
 checkpoints/
 *.bin
 *.safetensors

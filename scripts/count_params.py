@@ -1,19 +1,15 @@
-"""Analytical parameter counter for the hybrid LM.
+"""Count params analytically, before I've written any model code.
 
-Runs on plain Python (no torch, no GPU) so we can size configs before writing a line of model
-code. The per-module formulas below mirror the exact parameter inventory the ``nn.Module`` will
-have in Week 2; they are re-validated against ``sum(p.numel())`` once the real model exists.
+Runs on plain Python (no torch, no GPU) so I can size configs early. The per-module formulas below
+match the parameter inventory the real nn.Module will have in Week 2 — I'll double-check them against
+sum(p.numel()) once the model exists.
 
-Usage
------
-    python scripts/count_params.py                 # print the candidate-config sweep table
+    python scripts/count_params.py                 # the candidate-config sweep table
     python scripts/count_params.py --config configs/ratio_1_3.yaml
-    python scripts/count_params.py --target 50e6   # highlight configs near a param target
+    python scripts/count_params.py --target 50e6   # compare against a param target
 
-Why this exists
----------------
-D-ARCH-01: d_model=768, ~50M params, and a *clean* 1:15 ratio (needs a 16-layer period) cannot
-all hold at once. This script makes the trade-off numeric so we can pick a config on evidence.
+Why I need it: D-ARCH-01 — d_model=768, ~50M params, and a clean 1:15 ratio (which needs a 16-layer
+period) can't all hold at once. Putting real numbers on the table lets me pick a config on evidence.
 """
 
 from __future__ import annotations

@@ -1,15 +1,11 @@
-"""Model configuration and layer-pattern construction for the hybrid LM.
+"""Model config, plus how I turn a ratio into a list of layer types.
 
-Pure-Python (no torch import) so it can be used by tooling like ``scripts/count_params.py``
-without a GPU or the SSM kernels. The dataclass here is the single source of truth for a
-model's shape; the actual ``nn.Module`` (Week 2) will consume the same ``ModelConfig``.
+Kept torch-free so count_params.py can size things without touching the GPU. The dataclass is the
+one place a variant's shape lives — the real nn.Module (Week 2) reads the same ModelConfig.
 
-Ratio convention
-----------------
-``attn:ssm`` = 1:3 means one causal-attention layer for every three Mamba-2 layers, i.e. a
-repeating period of length 4. 1:7 -> period 8, 1:15 -> period 16. The attention layer is
-placed at the *end* of each period (SSM layers first, then the attention layer), matching the
-common hybrid convention of not starting the stack with attention.
+Ratio convention: "1:3" is one attention layer per three Mamba-2 layers, so the pattern repeats
+every 4 layers (1:7 -> every 8, 1:15 -> every 16). I drop the attention layer at the end of each
+period (SSM layers first) — starting a stack with attention isn't the usual hybrid setup.
 """
 
 from __future__ import annotations
@@ -18,12 +14,11 @@ from dataclasses import dataclass, field
 
 
 def build_layer_pattern(n_layers: int, ratio: str) -> list[str]:
-    """Return a list like ['mamba', 'mamba', 'mamba', 'attention', ...] of length ``n_layers``.
+    """Build the per-layer type list, e.g. ['mamba','mamba','mamba','attention', ...].
 
-    ``ratio`` is a string ``"a:s"`` (attention:ssm). The period is ``a + s``; within each
-    period the ``s`` SSM layers come first, followed by the ``a`` attention layer(s). If
-    ``n_layers`` is not a whole number of periods, the remainder is filled with SSM layers
-    (the cheaper, more numerous type) so the requested depth is honoured exactly.
+    ratio is "a:s" (attention:ssm). Period is a+s, with the s SSM layers first and the a attention
+    layer(s) after. If n_layers doesn't divide evenly into periods, the leftover just becomes SSM
+    layers (the cheaper, more common type) so I still get exactly the depth I asked for.
     """
     a_str, s_str = ratio.split(":")
     a, s = int(a_str), int(s_str)
@@ -31,7 +26,7 @@ def build_layer_pattern(n_layers: int, ratio: str) -> list[str]:
     pattern: list[str] = []
     for i in range(n_layers):
         pos = i % period
-        # SSM layers occupy positions [0, s); attention occupies [s, period)
+        # first s slots of each period are SSM, the rest are attention
         pattern.append("attention" if pos >= s else "mamba")
     return pattern
 
