@@ -11,6 +11,7 @@ import math
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 
 from src.model.attention import RotaryEmbedding
 from src.model.block import HybridBlock
@@ -23,6 +24,7 @@ class HybridLM(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.embed = nn.Embedding(cfg.vocab_size, cfg.d_model)
+        self.grad_checkpointing = False  # trainer flips this on to trade compute for VRAM
         self.blocks = nn.ModuleList(HybridBlock(cfg, t) for t in cfg.layer_types)
         self.norm_f = RMSNorm(cfg.d_model)
         self.lm_head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)
@@ -52,7 +54,11 @@ class HybridLM(nn.Module):
         cos, sin = self.rope(L)
         cos, sin = cos.to(x.dtype), sin.to(x.dtype)
         for blk in self.blocks:
-            x = blk(x, cos, sin)
+            if self.grad_checkpointing and self.training:
+                # recompute the block in backward instead of storing its activations
+                x = checkpoint(blk, x, cos, sin, use_reentrant=False)
+            else:
+                x = blk(x, cos, sin)
         x = self.norm_f(x)
         logits = self.lm_head(x)
 
