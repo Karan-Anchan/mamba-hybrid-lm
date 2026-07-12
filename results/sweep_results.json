@@ -1,0 +1,38 @@
+[
+  {
+    "name": "hybrid-1:3",
+    "ratio": "1:3",
+    "params_m": 52.53,
+    "n_attention": 4,
+    "n_mamba": 12,
+    "best_val_loss": 4.6581,
+    "best_val_ppl": 105.44,
+    "avg_tok_per_s": 25285,
+    "peak_vram_mb": 6692,
+    "tokens_seen": 16384000
+  },
+  {
+    "name": "hybrid-1:7",
+    "ratio": "1:7",
+    "params_m": 53.58,
+    "n_attention": 2,
+    "n_mamba": 14,
+    "best_val_loss": 4.6284,
+    "best_val_ppl": 102.35,
+    "avg_tok_per_s": 22747,
+    "peak_vram_mb": 7252,
+    "tokens_seen": 16384000
+  },
+  {
+    "name": "hybrid-1:15",
+    "ratio": "1:15",
+    "params_m": 54.11,
+    "n_attention": 1,
+    "n_mamba": 15,
+    "best_val_loss": 4.6716,
+    "best_val_ppl": 106.87,
+    "avg_tok_per_s": 21755,
+    "peak_vram_mb": 7531,
+    "tokens_seen": 16384000
+  }
+]

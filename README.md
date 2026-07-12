@@ -27,14 +27,18 @@ paying far less at long context. This project trains three ratios — **1:3, 1:7
 
 ## Headline result
 
-<!-- TODO(Week 4): replace with the real plot -->
-> 📊 _Perplexity vs. throughput vs. KV-cache memory across the three ratios — plot lands in Week 4._
+<!-- TODO(Week 4): full-scale runs + KV-cache/infer columns + the plot -->
+> 📊 _Reduced-scale preview below (16.4M tokens/variant on OpenWebText, matched compute). Full-scale
+> runs + inference/KV-cache columns + the headline plot land in Week 4._
 
-| Variant | Val PPL | Train tok/s | Infer tok/s | KV-cache @ 8K |
-|:--:|:--:|:--:|:--:|:--:|
-| 1:3  | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
-| 1:7  | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
-| 1:15 | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
+| Variant | Attn layers | Val PPL | Train tok/s | Peak VRAM | Infer tok/s | KV-cache @ 8K |
+|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| 1:3  | 4 | 105.4 | 25,285 | 6.7 GB | _tbd_ | _tbd_ |
+| 1:7  | 2 | **102.4** | 22,747 | 7.3 GB | _tbd_ | _tbd_ |
+| 1:15 | 1 | 106.9 | 21,755 | 7.5 GB | _tbd_ | _tbd_ |
+
+> Note: training throughput/VRAM rise with more Mamba layers because the SSD scan is currently the
+> O(L²) dual form — the SSM efficiency win is an **inference KV-cache** property, measured in Week 4.
 
 ---
 
