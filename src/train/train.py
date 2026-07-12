@@ -86,16 +86,8 @@ def estimate_loss(model, splits, cfg: TrainConfig) -> dict:
     return out
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
-    for f, default in asdict(TrainConfig()).items():
-        arg = "--" + f.replace("_", "-")
-        if isinstance(default, bool):
-            ap.add_argument(arg, action="store_true" if not default else "store_false", dest=f)
-        else:
-            ap.add_argument(arg, type=type(default), default=default, dest=f)
-    cfg = TrainConfig(**vars(ap.parse_args()))
-
+def run(cfg: TrainConfig) -> dict:
+    """Train one variant and hand back its headline metrics (used by the sweep runner too)."""
     torch.manual_seed(cfg.seed)
     torch.backends.cuda.matmul.allow_tf32 = True  # free speed on the matmuls I don't need fp32 for
 
@@ -114,14 +106,19 @@ def main() -> None:
     optim = torch.optim.AdamW(model.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2),
                               weight_decay=cfg.weight_decay, fused=True)
 
-    run = None
+    wb = None
     if cfg.wandb:
         import wandb
-        run = wandb.init(project=cfg.wandb_project, name=mcfg.name, config={**asdict(cfg), **asdict(mcfg)})
+        wb = wandb.init(project=cfg.wandb_project, name=mcfg.name, config={**asdict(cfg), **asdict(mcfg)})
 
     ckpt_dir = Path(cfg.ckpt_dir) / mcfg.name.replace(":", "_")
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     best_val = float("inf")
+    if cfg.device == "cuda":
+        torch.cuda.reset_peak_memory_stats()
+    tokens_seen = 0
+    train_t0 = time.time()
+    eval_time = 0.0  # subtract eval/ckpt time so the throughput number is training-only
 
     for step in range(cfg.max_steps + 1):
         lr = cosine_lr(step, cfg)
@@ -130,16 +127,18 @@ def main() -> None:
 
         # ---- eval + checkpoint ----
         if step % cfg.eval_interval == 0:
+            e0 = time.time()
             losses = estimate_loss(model, splits, cfg)
             ppl = math.exp(losses["val"])
             print(f"step {step:5d} | train {losses['train']:.3f} | val {losses['val']:.3f} "
                   f"| ppl {ppl:.1f} | lr {lr:.2e}")
-            if run:
-                run.log({"val/loss": losses["val"], "val/ppl": ppl, "train/eval_loss": losses["train"]}, step=step)
+            if wb:
+                wb.log({"val/loss": losses["val"], "val/ppl": ppl, "train/eval_loss": losses["train"]}, step=step)
             if losses["val"] < best_val:
                 best_val = losses["val"]
                 torch.save({"model": model.state_dict(), "model_config": asdict(mcfg),
                             "step": step, "val_loss": best_val}, ckpt_dir / "best.pt")
+            eval_time += time.time() - e0
         if step == cfg.max_steps:
             break
 
@@ -153,20 +152,47 @@ def main() -> None:
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optim.step()
         optim.zero_grad(set_to_none=True)
+        tokens_seen += cfg.batch_size * cfg.grad_accum * cfg.block_size
 
         if step % cfg.log_interval == 0:
             if cfg.device == "cuda":
                 torch.cuda.synchronize()  # otherwise I'm timing the async launch, not the work
-            toks = cfg.batch_size * cfg.grad_accum * cfg.block_size
-            tps = toks / (time.time() - step_start)
+            tps = (cfg.batch_size * cfg.grad_accum * cfg.block_size) / (time.time() - step_start)
             print(f"  step {step:5d} | loss {loss.item():.3f} | gnorm {grad_norm:.2f} | {tps:.0f} tok/s")
-            if run:
-                run.log({"train/loss": loss.item(), "train/grad_norm": grad_norm.item(),
-                         "lr": lr, "throughput/tok_per_s": tps}, step=step)
+            if wb:
+                wb.log({"train/loss": loss.item(), "train/grad_norm": grad_norm.item(),
+                        "lr": lr, "throughput/tok_per_s": tps}, step=step)
 
-    print(f"done. best val loss {best_val:.3f} (ppl {math.exp(best_val):.1f}) -> {ckpt_dir}/best.pt")
-    if run:
-        run.finish()
+    peak_vram = torch.cuda.max_memory_allocated() / 1e6 if cfg.device == "cuda" else 0.0
+    avg_tps = tokens_seen / (time.time() - train_t0 - eval_time)
+    result = {
+        "name": mcfg.name, "ratio": mcfg.ratio,
+        "params_m": round(model.num_params() / 1e6, 2),
+        "n_attention": mcfg.n_attention_layers, "n_mamba": mcfg.n_mamba_layers,
+        "best_val_loss": round(best_val, 4), "best_val_ppl": round(math.exp(best_val), 2),
+        "avg_tok_per_s": round(avg_tps), "peak_vram_mb": round(peak_vram),
+        "tokens_seen": tokens_seen,
+    }
+    print(f"done. {mcfg.name}: best val ppl {result['best_val_ppl']} | "
+          f"{result['avg_tok_per_s']} tok/s | {result['peak_vram_mb']} MB peak")
+    if wb:
+        wb.finish()
+    # free the GPU so the next sweep variant starts from a clean slate
+    del model, optim
+    if cfg.device == "cuda":
+        torch.cuda.empty_cache()
+    return result
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    for f, default in asdict(TrainConfig()).items():
+        arg = "--" + f.replace("_", "-")
+        if isinstance(default, bool):
+            ap.add_argument(arg, action="store_true" if not default else "store_false", dest=f)
+        else:
+            ap.add_argument(arg, type=type(default), default=default, dest=f)
+    run(TrainConfig(**vars(ap.parse_args())))
 
 
 if __name__ == "__main__":

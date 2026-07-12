@@ -67,8 +67,12 @@ def main() -> None:
     # do val first (it's small) so a mistake shows up fast before the long train pass
     print(f"[val]   encoding <= {args.val_docs:,} docs ...")
     n_val = _stream_split(_val_iterator(args.dataset, args.val_docs), tok, eot_id, out_dir / "val.bin")
-    print(f"[train] encoding <= {args.train_docs:,} docs ...")
-    n_train = _stream_split(text_iterator(args.dataset, args.train_docs), tok, eot_id, out_dir / "train.bin")
+    # for datasets without a real val split I carved val from the head, so train must skip past it
+    # (otherwise the same docs land in both — a leak). TinyStories has its own val split, so skip=0.
+    train_skip = 0 if args.dataset == "tinystories" else args.val_docs
+    print(f"[train] encoding <= {args.train_docs:,} docs (skip {train_skip}) ...")
+    n_train = _stream_split(text_iterator(args.dataset, args.train_docs, skip=train_skip),
+                            tok, eot_id, out_dir / "train.bin")
 
     meta = {
         "dataset": args.dataset,

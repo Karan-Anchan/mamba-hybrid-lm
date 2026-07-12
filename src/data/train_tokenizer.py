@@ -18,21 +18,24 @@ from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
 EOT = "<|endoftext|>"
 
 
-def text_iterator(dataset: str, docs: int):
-    # streaming so I don't pull the whole dataset down; just stop after `docs` examples
+def text_iterator(dataset: str, docs: int, skip: int = 0):
+    # streaming so I don't pull the whole dataset down; take `docs` examples after skipping `skip`.
+    # skip is how I carve a non-overlapping val/train split out of a dataset that has no val split.
     from datasets import load_dataset
 
     if dataset == "tinystories":
         ds = load_dataset("roneneldan/TinyStories", split="train", streaming=True)
         key = "text"
     elif dataset == "openwebtext":
-        ds = load_dataset("Skylion007/openwebtext", split="train", streaming=True)
+        ds = load_dataset("Skylion007/openwebtext", split="train", streaming=True, trust_remote_code=True)
         key = "text"
     else:
         raise ValueError(f"unknown dataset {dataset!r}")
 
     for i, ex in enumerate(ds):
-        if i >= docs:
+        if i < skip:
+            continue
+        if i >= skip + docs:
             break
         yield ex[key]
 
