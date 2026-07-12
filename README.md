@@ -128,7 +128,7 @@ demo/      Next.js frontend + FastAPI backend
 
 - [x] Week 1 — Foundation: environment, data pipeline, param budget, baseline
 - [x] Week 2 — Hybrid block + ratio-configurable stack + training loop (converges on TinyStories, val ppl 11.4)
-- [ ] Week 3 — Train the three ratios at matched compute
+- [x] Week 3 — Matched-compute sweep infra + OWT pipeline + reduced-scale preview (full-scale runs pending)
 - [ ] Week 4 — Evaluation: PPL, KV-cache vs context, needle-in-haystack, plots
 - [ ] Week 5 — Live demo (Next.js + FastAPI), hosted + local
 - [ ] Week 6 — Write-up + workshop-style paper
