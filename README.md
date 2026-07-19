@@ -1,10 +1,10 @@
 <div align="center">
 
-# 🐍⚡ Mamba-Transformer Hybrid LM
+# Mamba-Transformer Hybrid LM
 
 **A small (~50M) hybrid language model that interleaves Mamba-2 selective-SSM blocks with causal attention — and a study of how the attention:SSM ratio trades off quality, speed, and memory.**
 
-[![Live Demo](https://img.shields.io/badge/🔴_Live_Demo-online-e11d48?style=for-the-badge)](#-live-demo)
+[![Live Demo](https://img.shields.io/badge/live_demo-online-e11d48?style=for-the-badge)](#live-demo)
 [![Model](https://img.shields.io/badge/params-~50M-2563eb?style=for-the-badge)]()
 [![Precision](https://img.shields.io/badge/precision-bf16-7c3aed?style=for-the-badge)]()
 [![GPU](https://img.shields.io/badge/trained_on-RTX_5070_12GB-16a34a?style=for-the-badge)]()
@@ -28,8 +28,8 @@ paying far less at long context. This project trains three ratios — **1:3, 1:7
 ## Headline result
 
 <!-- TODO(Week 4): full-scale runs + KV-cache/infer columns + the plot -->
-> 📊 _Reduced-scale preview below (16.4M tokens/variant on OpenWebText, matched compute). Full-scale
-> runs + inference/KV-cache columns + the headline plot land in Week 4._
+> _Reduced-scale preview below (16.4M tokens/variant on OpenWebText, matched compute). Full-scale
+> runs, inference/KV-cache columns and the headline plot land in Week 4._
 
 | Variant | Attn layers | Val PPL | Train tok/s | Peak VRAM | Infer tok/s | KV-cache @ 8K |
 |:--:|:--:|:--:|:--:|:--:|:--:|:--:|
@@ -42,23 +42,23 @@ paying far less at long context. This project trains three ratios — **1:3, 1:7
 
 ---
 
-## 🔴 Live Demo
+## Live demo
 
 <!-- TODO(Week 5): embed the recorded GIF + hosted link -->
-**▶ Try it live:** _link lands in Week 5_ · **📹 30-second demo:** _GIF lands in Week 5_
+_The hosted link and a 30-second GIF land in Week 5._
 
-The demo is a **Next.js frontend** (hosted on Vercel, always on) talking to a **FastAPI backend**.
-You type a prompt and watch tokens stream in with **live tokens/sec** and, when run locally on a GPU,
-**live VRAM usage**. You can switch between the trained ratio variants.
+The demo is a Next.js frontend (hosted on Vercel, always on) talking to a FastAPI backend. You
+type a prompt and watch tokens stream in with live tokens/sec and, when run locally on a GPU,
+live VRAM usage. You can switch between the trained ratio variants.
 
 ```
 Recruiter → GitHub → Vercel frontend ──POST /generate (SSE)──▶ FastAPI backend ──▶ ~50M model
                        (always on)                              (free CPU host)      streams tokens
 ```
 
-Because the model is only ~50M parameters, it runs at usable speed **on a free CPU host** — so the
-live link stays up without a paid GPU. Full-fidelity GPU speed + the VRAM meter are available via
-**run-locally** (see `demo/README.md`).
+Because the model is only ~50M parameters, it runs at usable speed on a free CPU host, so the
+live link stays up without a paid GPU. Full-fidelity GPU speed and the VRAM meter are available
+by running it locally (see `demo/README.md`).
 
 ---
 
@@ -72,9 +72,11 @@ HybridBlock:
   x = x + SwiGLU_MLP(RMSNorm(x))
 ```
 
-- **Mamba-2 mixer** — selective SSM, SSD chunked scan · d_state 128 · expand 2 · headdim 64 · fixed recurrent state at inference.
-- **Attention mixer** — causal multi-head (head_dim 64) · RoPE · Flash-Attn-2 if available, else PyTorch SDPA · KV-cache at inference.
-- **d_model 768** · bf16 · gradient checkpointing · trained on **OpenWebText**.
+| | |
+| :--- | :--- |
+| Mamba-2 mixer | selective SSM, SSD chunked scan · d_state 128 · expand 2 · headdim 64 · fixed recurrent state at inference |
+| Attention mixer | causal multi-head (head_dim 64) · RoPE · Flash-Attn-2 if available, else PyTorch SDPA · KV-cache at inference |
+| Shared | d_model 768 · bf16 · gradient checkpointing · trained on OpenWebText |
 
 The attention:SSM ratio is a single config knob — a per-layer type list like
 `['mamba','mamba','mamba','attention']` (1:3) — so the sweep is a config change, not a code change.
@@ -102,7 +104,7 @@ python scripts/count_params.py --config configs/ratio_1_3.yaml
 python -m src.train.train --config configs/ratio_1_3.yaml
 ```
 
-> ⚠️ On RTX 5070 (Blackwell, sm_120) the `mamba-ssm` CUDA kernels may need to be built from source.
+> On RTX 5070 (Blackwell, sm_120) the `mamba-ssm` CUDA kernels may need to be built from source.
 > If the build fails, the model falls back to a pure-PyTorch Mamba path (slower, identical math).
 > This is also what lets the demo run on CPU-only hosts.
 
