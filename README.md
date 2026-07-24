@@ -2,7 +2,7 @@
 
 # Mamba-Transformer Hybrid LM
 
-**A small (~50M) hybrid language model that interleaves Mamba-2 selective-SSM blocks with causal attention — and a study of how the attention:SSM ratio trades off quality, speed, and memory.**
+**A small (~50M) language model that interleaves Mamba-2 selective-SSM blocks with causal attention. The experiments compare quality, speed, and memory at different attention:SSM ratios.**
 
 [![Live Demo](https://img.shields.io/badge/live_demo-online-e11d48?style=for-the-badge)](#live-demo)
 [![Model](https://img.shields.io/badge/params-~50M-2563eb?style=for-the-badge)]()
@@ -17,19 +17,18 @@
 
 > **At a fixed compute budget, how does the attention:SSM layer ratio affect perplexity, generation speed, and KV-cache memory for a small (~50M) hybrid LM?**
 
-Mamba-2 state-space layers are **O(L)** in sequence length with a **fixed-size** recurrent state,
-while attention is **O(L²)** with a **KV-cache that grows** with context. Interleaving them (the
-[Jamba](https://arxiv.org/abs/2403.19887) pattern) should keep most of attention's quality while
-paying far less at long context. This project trains three ratios — **1:3, 1:7, 1:15** (attention:SSM)
-— at **matched tokens-seen** and measures the trade-off.
+Mamba-2 state-space layers are **O(L)** in sequence length and use a **fixed-size** recurrent state.
+Attention is **O(L²)** and its **KV-cache grows** with context. The project uses the interleaving
+pattern from [Jamba](https://arxiv.org/abs/2403.19887) and trains three attention:SSM ratios:
+**1:3, 1:7, and 1:15**. Each variant sees the same number of tokens.
 
 ---
 
 ## Headline result
 
 <!-- TODO(Week 4): full-scale runs + KV-cache/infer columns + the plot -->
-> _Reduced-scale preview below (16.4M tokens/variant on OpenWebText, matched compute). Full-scale
-> runs, inference/KV-cache columns and the headline plot land in Week 4._
+> _The table below is a reduced-scale preview: 16.4M OpenWebText tokens per variant at matched
+> compute. Full-scale runs, inference measurements, and KV-cache measurements are still pending._
 
 | Variant | Attn layers | Val PPL | Train tok/s | Peak VRAM | Infer tok/s | KV-cache @ 8K |
 |:--:|:--:|:--:|:--:|:--:|:--:|:--:|
@@ -37,28 +36,28 @@ paying far less at long context. This project trains three ratios — **1:3, 1:7
 | 1:7  | 2 | **102.4** | 22,747 | 7.3 GB | _tbd_ | _tbd_ |
 | 1:15 | 1 | 106.9 | 21,755 | 7.5 GB | _tbd_ | _tbd_ |
 
-> Note: training throughput/VRAM rise with more Mamba layers because the SSD scan is currently the
-> O(L²) dual form — the SSM efficiency win is an **inference KV-cache** property, measured in Week 4.
+> Note: training throughput and VRAM rise with more Mamba layers because the SSD scan currently uses
+> the O(L²) dual form. The expected SSM memory advantage is an **inference KV-cache** property and
+> has not been measured yet.
 
 ---
 
 ## Live demo
 
 <!-- TODO(Week 5): embed the recorded GIF + hosted link -->
-_The hosted link and a 30-second GIF land in Week 5._
+_The hosted link and recorded demo are still pending._
 
-The demo is a Next.js frontend (hosted on Vercel, always on) talking to a FastAPI backend. You
-type a prompt and watch tokens stream in with live tokens/sec and, when run locally on a GPU,
-live VRAM usage. You can switch between the trained ratio variants.
+The demo is a Next.js frontend connected to a FastAPI backend. Enter a prompt to stream tokens
+and see live throughput. A local GPU run also reports VRAM use, and the interface can switch
+between trained ratio variants.
 
 ```
 Recruiter → GitHub → Vercel frontend ──POST /generate (SSE)──▶ FastAPI backend ──▶ ~50M model
                        (always on)                              (free CPU host)      streams tokens
 ```
 
-Because the model is only ~50M parameters, it runs at usable speed on a free CPU host, so the
-live link stays up without a paid GPU. Full-fidelity GPU speed and the VRAM meter are available
-by running it locally (see `demo/README.md`).
+At roughly 50M parameters, the model can run on a free CPU host. Local execution is needed for
+GPU throughput and the VRAM meter; see `demo/README.md`.
 
 ---
 
@@ -78,8 +77,9 @@ HybridBlock:
 | Attention mixer | causal multi-head (head_dim 64) · RoPE · Flash-Attn-2 if available, else PyTorch SDPA · KV-cache at inference |
 | Shared | d_model 768 · bf16 · gradient checkpointing · trained on OpenWebText |
 
-The attention:SSM ratio is a single config knob — a per-layer type list like
-`['mamba','mamba','mamba','attention']` (1:3) — so the sweep is a config change, not a code change.
+The attention:SSM ratio is one configuration value. A 1:3 variant, for example, uses the
+per-layer list `['mamba','mamba','mamba','attention']`, so the sweep does not require separate
+model implementations.
 
 ---
 
@@ -145,4 +145,4 @@ Hymba (NVIDIA, 2024).
 
 ## License
 
-MIT © Karan Anchan
+Released under the MIT License. © Karan Anchan
