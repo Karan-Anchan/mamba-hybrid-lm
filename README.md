@@ -73,9 +73,9 @@ HybridBlock:
 
 | | |
 | :--- | :--- |
-| Mamba-2 mixer | selective SSM, SSD chunked scan · d_state 128 · expand 2 · headdim 64 · fixed recurrent state at inference |
-| Attention mixer | causal multi-head (head_dim 64) · RoPE · Flash-Attn-2 if available, else PyTorch SDPA · KV-cache at inference |
-| Shared | d_model 768 · bf16 · gradient checkpointing · trained on OpenWebText |
+| Mamba-2 mixer | pure-PyTorch SSD dual form (masked-attention formulation, O(L²)) · d_state 128 · expand 2 · headdim 64 |
+| Attention mixer | causal multi-head (head_dim 64) · RoPE · PyTorch scaled-dot-product attention (SDPA) |
+| Shared | d_model 448 · 16 layers · bf16 autocast · trained on OpenWebText |
 
 The attention:SSM ratio is one configuration value. A 1:3 variant, for example, uses the
 per-layer list `['mamba','mamba','mamba','attention']`, so the sweep does not require separate
@@ -100,13 +100,36 @@ python -m src.data.prepare_data   --dataset tinystories --train-docs 50000 --val
 # 4. sanity-check the parameter budget for a config
 python scripts/count_params.py --config configs/ratio_1_3.yaml
 
-# 5. train  (coming soon — Week 2/3)
-python -m src.train.train --config configs/ratio_1_3.yaml
+# 5. train one variant; reuse the run ID to resume or skip a completed run
+python -m src.train.train --model-config configs/ratio_1_3.yaml --run-id debug-1
 ```
 
-> On RTX 5070 (Blackwell, sm_120) the `mamba-ssm` CUDA kernels may need to be built from source.
-> If the build fails, the model falls back to a pure-PyTorch Mamba path (slower, identical math).
-> This is also what lets the demo run on CPU-only hosts.
+The sweep runner keeps summaries in `results/<run-id>/` and each variant's manifest, metrics,
+resumable `last.pt`, and evaluation `best.pt` in `checkpoints/<run-id>/<variant>/`. The default
+8,000-step recipe is a **reduced 131.072M-token run per variant**, not the full Week-3 target:
+
+```bash
+# reduced readiness run: 8,000 × (8 batch × 4 accumulation × 512 tokens) = 131,072,000 tokens/variant
+python scripts/run_sweep.py --run-id week3-131m-v1 --max-steps 8000
+
+# authoritative ~700M-token run: 42,725 steps = 700,006,400 tokens/variant
+# 855 warmup steps = ceil(2% × 42,725), as specified in the training plan
+python scripts/run_sweep.py --run-id week3-700m-v1 --max-steps 42725 --warmup-steps 855
+```
+
+Do not start the authoritative command from the current 72.7M-token preview memmap. Week 3 still
+requires the planned approximately 5B-token OpenWebText sampling pool to be prepared and verified first.
+
+If training stops, run the same command with the same run ID. Resume is accepted only when the
+training configuration, SHA-256 dataset identity, runtime-code fingerprint, and git provenance still
+match. A completed variant is skipped only after its manifest, exact step/token counts, finite result
+fields, artifact checksums, full metrics trajectory, and both `best.pt` and `last.pt` validate. Checkpoint
+loading uses PyTorch's restricted `weights_only=True` path, and a per-variant lock rejects concurrent
+writers. Earlier runs are never overwritten.
+
+> The current implementation deliberately uses the pure-PyTorch Mamba-2 SSD dual form; it does not
+> dynamically load or fall back from `mamba-ssm` CUDA kernels. This is portable to CPU, but its O(L²)
+> training behavior does not provide the speed or memory profile of a fused linear-scan kernel.
 
 ---
 
