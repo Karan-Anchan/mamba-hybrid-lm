@@ -109,16 +109,38 @@ resumable `last.pt`, and evaluation `best.pt` in `checkpoints/<run-id>/<variant>
 8,000-step recipe is a **reduced 131.072M-token run per variant**, not the full Week-3 target:
 
 ```bash
+# first build the immutable authoritative sampling pool (not run as part of repository verification)
+python -m src.data.prepare_data --dataset openwebtext \
+  --tokenizer data/tokenizer/openwebtext.json --out-dir data/openwebtext-5b \
+  --run-id owt-5b-20260809 --revision 79d93d786212f7344586290adb811d4ae6a1762c \
+  --train-tokens 5000000000 --val-tokens 10000000
+
+# standalone integrity check; the sweep performs this same check before creating run artifacts
+python -m src.data.prepare_data --validate-only data/openwebtext-5b
+
 # reduced readiness run: 8,000 × (8 batch × 4 accumulation × 512 tokens) = 131,072,000 tokens/variant
-python scripts/run_sweep.py --run-id week3-131m-v1 --max-steps 8000
+python scripts/run_sweep.py --data-dir data/openwebtext-5b --run-id week3-131m-v1 --max-steps 8000
 
 # authoritative ~700M-token run: 42,725 steps = 700,006,400 tokens/variant
 # 855 warmup steps = ceil(2% × 42,725), as specified in the training plan
-python scripts/run_sweep.py --run-id week3-700m-v1 --max-steps 42725 --warmup-steps 855
+python scripts/run_sweep.py --data-dir data/openwebtext-5b \
+  --run-id week3-700m-v1 --max-steps 42725 --warmup-steps 855
 ```
 
 Do not start the authoritative command from the current 72.7M-token preview memmap. Week 3 still
 requires the planned approximately 5B-token OpenWebText sampling pool to be prepared and verified first.
+The two uint16 token files require at least **10,020,000,000 bytes (9.33 GiB)** before whole-document
+overshoot; staging is renamed into place rather than copied. Reserve at least 12 GiB for the prepared
+artifacts, plus separate space for the Hugging Face cache. If streaming stops, the run-specific stage is
+normally preserved and the final directory remains absent; the interrupted-manifest update is best effort
+if the filesystem itself is failing. Choose a new run ID or inspect/remove the stage manually. The builder
+preflights current free space against the exact token-file lower bound, but whole-document overshoot, the
+download cache, and space already consumed by stale stages still require the documented reserve.
+An existing final directory is never overwritten. `--reuse-existing` only accepts the exact same verified
+source revision, targets, tokenizer, tool/runtime provenance, counts, and checksums. Authoritative
+OpenWebText builds require a full 40-hex commit revision and do not execute dataset repository code.
+Artifact names are fixed basenames, links/reparse points are rejected, and all reads use little-endian
+uint16 explicitly. Every sweep revalidates the manifest identity and artifact hashes before training starts.
 
 If training stops, run the same command with the same run ID. Resume is accepted only when the
 training configuration, SHA-256 dataset identity, runtime-code fingerprint, and git provenance still

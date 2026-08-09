@@ -7,7 +7,8 @@ variant and skips variants that already have a validated completed result.
 The 8,000-step default is a 131.072M-token reduced run at batch 8, accumulation 4, block 512. The
 authoritative 700M-token Week-3 run uses 42,725 steps:
 
-    python scripts/run_sweep.py --run-id week3-700m-v1 --max-steps 42725 --warmup-steps 855
+    python scripts/run_sweep.py --data-dir data/openwebtext-5b --run-id week3-700m-v1 \
+        --max-steps 42725 --warmup-steps 855
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from src.train.train import (  # noqa: E402
     run,
     validate_run_id,
 )
+from src.data.prepare_data import validate_prepared_dataset  # noqa: E402
 
 CONFIGS = ["configs/ratio_1_3.yaml", "configs/ratio_1_7.yaml", "configs/ratio_1_15.yaml"]
 
@@ -66,9 +68,10 @@ def warmup_steps_for_fraction(steps: int, fraction: float) -> int:
     return math.ceil(steps * fraction)
 
 
-def _sweep_signature(args: argparse.Namespace, run_id: str) -> str:
+def _sweep_signature(args: argparse.Namespace, run_id: str, data_signature: str) -> str:
     payload = {
         "configs": CONFIGS,
+        "data_signature": data_signature,
         "run_id": run_id,
         "settings": {
             key: value for key, value in vars(args).items()
@@ -81,7 +84,10 @@ def _sweep_signature(args: argparse.Namespace, run_id: str) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--data-dir", default="data/openwebtext")
+    ap.add_argument(
+        "--data-dir", required=True,
+        help="verified prepared-dataset directory; explicit to prevent accidental preview-data runs",
+    )
     ap.add_argument("--max-steps", type=int, default=8000,
                     help="optimizer steps; default is a reduced 131.072M-token run, not the 700M target")
     ap.add_argument(
@@ -105,6 +111,9 @@ def main() -> None:
     ap.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
     args = ap.parse_args()
 
+    data_manifest = validate_prepared_dataset(Path(args.data_dir))
+    data_signature = data_manifest["signature"]
+    print(f"verified prepared data: {Path(args.data_dir).resolve()} ({data_signature})")
     run_id = validate_run_id(args.run_id or default_run_id())
     out = sweep_output_dir(args.out, run_id)
     out.mkdir(parents=True, exist_ok=True)
@@ -112,7 +121,7 @@ def main() -> None:
 
     tokens_per_step = tokens_for_steps(1, args.batch_size, args.grad_accum, args.block_size)
     manifest_path = out / "sweep_manifest.json"
-    signature = _sweep_signature(args, run_id)
+    signature = _sweep_signature(args, run_id, data_signature)
     if manifest_path.exists():
         manifest = read_json(manifest_path)
         if not isinstance(manifest, dict):
@@ -130,6 +139,7 @@ def main() -> None:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "configs": CONFIGS,
             "arguments": vars(args),
+            "data_signature": data_signature,
             "tokens_per_step": tokens_per_step,
             "tokens_per_variant": tokens_per_step * args.max_steps,
             "signature": signature,

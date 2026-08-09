@@ -16,7 +16,7 @@ import torch
 def load_split(data_dir: str | Path, split: str) -> np.ndarray:
     # read-only memmap; 'r' mode means I never accidentally scribble over the data
     path = Path(data_dir) / f"{split}.bin"
-    return np.memmap(path, dtype=np.uint16, mode="r")
+    return np.memmap(path, dtype="<u2", mode="r")
 
 
 def load_meta(data_dir: str | Path) -> dict:

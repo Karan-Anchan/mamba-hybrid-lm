@@ -11,14 +11,17 @@ UNK and it copes with any input. One special token, <|endoftext|>, marks doc bou
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
 
 EOT = "<|endoftext|>"
+OWT_REVISION = "79d93d786212f7344586290adb811d4ae6a1762c"
+_FULL_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
-def text_iterator(dataset: str, docs: int, skip: int = 0):
+def text_iterator(dataset: str, docs: int, skip: int = 0, revision: str | None = None):
     # streaming so I don't pull the whole dataset down; take `docs` examples after skipping `skip`.
     # skip is how I carve a non-overlapping val/train split out of a dataset that has no val split.
     from datasets import load_dataset
@@ -27,7 +30,12 @@ def text_iterator(dataset: str, docs: int, skip: int = 0):
         ds = load_dataset("roneneldan/TinyStories", split="train", streaming=True)
         key = "text"
     elif dataset == "openwebtext":
-        ds = load_dataset("Skylion007/openwebtext", split="train", streaming=True, trust_remote_code=True)
+        revision = revision or OWT_REVISION
+        if not _FULL_COMMIT_RE.fullmatch(revision):
+            raise ValueError("OpenWebText tokenizer training requires a full immutable commit revision")
+        ds = load_dataset(
+            "Skylion007/openwebtext", split="train", streaming=True, revision=revision,
+        )
         key = "text"
     else:
         raise ValueError(f"unknown dataset {dataset!r}")
@@ -60,6 +68,7 @@ def main() -> None:
     ap.add_argument("--docs", type=int, default=200_000, help="how many docs to train on")
     ap.add_argument("--vocab", type=int, default=16000)
     ap.add_argument("--out", default="data/tokenizer/tokenizer.json")
+    ap.add_argument("--revision", help=f"OpenWebText commit revision (default: {OWT_REVISION})")
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -67,7 +76,7 @@ def main() -> None:
 
     tok, trainer = build_tokenizer(args.vocab)
     print(f"training {args.vocab}-vocab byte-level BPE on <= {args.docs:,} {args.dataset} docs ...")
-    tok.train_from_iterator(text_iterator(args.dataset, args.docs), trainer=trainer)
+    tok.train_from_iterator(text_iterator(args.dataset, args.docs, revision=args.revision), trainer=trainer)
     tok.save(str(out))
 
     eot_id = tok.token_to_id(EOT)
