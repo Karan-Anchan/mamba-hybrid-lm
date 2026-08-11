@@ -1,0 +1,42 @@
+{
+  "arguments": {
+    "batch_size": 8,
+    "block_size": 512,
+    "checkpoint_interval": 500,
+    "checkpoint_root": "checkpoints",
+    "data_dir": "data/openwebtext-5b",
+    "eval_interval": 500,
+    "eval_iters": 50,
+    "grad_accum": 4,
+    "grad_checkpointing": false,
+    "log_interval": 20,
+    "lr": 0.001,
+    "max_steps": 42725,
+    "out": "results",
+    "resume": true,
+    "run_id": "week3-700m-v1",
+    "wandb": false,
+    "warmup_steps": 855
+  },
+  "completed_at": "2026-08-10T22:35:40.746191+00:00",
+  "completed_variants": [
+    "1:3",
+    "1:7",
+    "1:15"
+  ],
+  "configs": [
+    "configs/ratio_1_3.yaml",
+    "configs/ratio_1_7.yaml",
+    "configs/ratio_1_15.yaml"
+  ],
+  "created_at": "2026-08-09T21:25:33.732792+00:00",
+  "data_signature": "4d132a4e0887c934874f45a28a37f5a9b902cc727cb76e41fad692c0bec4b3a7",
+  "elapsed_minutes_this_invocation": 406.1318785627683,
+  "resumed_at": "2026-08-10T15:49:32.827194+00:00",
+  "run_id": "week3-700m-v1",
+  "schema": 1,
+  "signature": "7d6092b27550104428416a5808a6959c744df475ab575d30a322b95c338fc39c",
+  "status": "completed",
+  "tokens_per_step": 16384,
+  "tokens_per_variant": 700006400
+}

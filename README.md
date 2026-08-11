@@ -2,192 +2,221 @@
 
 # Mamba-Transformer Hybrid LM
 
-**A small (~50M) language model that interleaves Mamba-2 selective-SSM blocks with causal attention. The experiments compare quality, speed, and memory at different attention:SSM ratios.**
+A 52-54M parameter language-model study that interleaves Mamba-2 selective state-space blocks with causal attention.
 
-[![Live Demo](https://img.shields.io/badge/live_demo-online-e11d48?style=for-the-badge)](#live-demo)
-[![Model](https://img.shields.io/badge/params-~50M-2563eb?style=for-the-badge)]()
-[![Precision](https://img.shields.io/badge/precision-bf16-7c3aed?style=for-the-badge)]()
-[![GPU](https://img.shields.io/badge/trained_on-RTX_5070_12GB-16a34a?style=for-the-badge)]()
+[![Week 3](https://img.shields.io/badge/milestone-Week_3_complete-55a36f?style=for-the-badge)](#week-3-result)
+[![Tests](https://img.shields.io/badge/tests-33_passed-3f7f5f?style=for-the-badge)](#verification)
+[![Precision](https://img.shields.io/badge/precision-bf16-596c74?style=for-the-badge)](#training-protocol)
+[![GPU](https://img.shields.io/badge/GPU-RTX_5070_12GB-66756c?style=for-the-badge)](#training-protocol)
 
 </div>
 
----
-
 ## Research question
 
-> **At a fixed compute budget, how does the attention:SSM layer ratio affect perplexity, generation speed, and KV-cache memory for a small (~50M) hybrid LM?**
+> At a fixed token budget and near-matched parameter scale, how does the attention:SSM layer ratio affect validation perplexity and observed training behavior in a small hybrid language model?
 
-Mamba-2 state-space layers are **O(L)** in sequence length and use a **fixed-size** recurrent state.
-Attention is **O(L²)** and its **KV-cache grows** with context. The project uses the interleaving
-pattern from [Jamba](https://arxiv.org/abs/2403.19887) and trains three attention:SSM ratios:
-**1:3, 1:7, and 1:15**. Each variant sees the same number of tokens.
+I trained three 16-layer variants with attention:SSM ratios of **1:3**, **1:7**, and **1:15**. Every run used the same prepared OpenWebText pool, optimizer schedule, batch geometry, and **700,006,400 sampled token positions**.
 
----
+The current Mamba-2 path uses the portable PyTorch SSD dual form. It is mathematically useful for the controlled architecture comparison, but it materializes an `L x L` matrix and does not reproduce the speed or memory profile of a fused linear scan.
 
-## Headline result
+## Week 3 result
 
-<!-- TODO(Week 4): full-scale runs + KV-cache/infer columns + the plot -->
-> _The table below is a reduced-scale preview: 16.4M OpenWebText tokens per variant at matched
-> compute. Full-scale runs, inference measurements, and KV-cache measurements are still pending._
+The authoritative matched-token sweep completed on 2026-08-10. Lower perplexity is better.
 
-| Variant | Attn layers | Val PPL | Train tok/s | Peak VRAM | Infer tok/s | KV-cache @ 8K |
-|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
-| 1:3  | 4 | 105.4 | 25,285 | 6.7 GB | _tbd_ | _tbd_ |
-| 1:7  | 2 | **102.4** | 22,747 | 7.3 GB | _tbd_ | _tbd_ |
-| 1:15 | 1 | 106.9 | 21,755 | 7.5 GB | _tbd_ | _tbd_ |
+| Ratio | Attention / Mamba layers | Parameters | Best val PPL | Train tok/s | Peak allocated VRAM |
+|:--:|:--:|--:|--:|--:|--:|
+| **1:3** | 4 / 12 | 52.53M | **26.30** | **26,808** | **6,684 MB** |
+| 1:7 | 2 / 14 | 53.58M | 26.47 | 24,162 | 7,251 MB |
+| 1:15 | 1 / 15 | 54.11M | 26.51 | 21,187 | 7,538 MB |
 
-> Note: training throughput and VRAM rise with more Mamba layers because the SSD scan currently uses
-> the O(L²) dual form. The expected SSM memory advantage is an **inference KV-cache** property and
-> has not been measured yet.
+The quality gap is small and favors 1:3 in this single-seed sweep. The 1:15 run was paused at a verified checkpoint when another GPU workload reduced headroom, then resumed with model, optimizer, counters, metrics, and RNG state restored. Its throughput therefore includes external host contention.
 
----
+The training-efficiency ordering is specific to this implementation. More Mamba layers are slower here because each Mamba block builds a quadratic matrix across fourteen heads. These results do not support a general claim that Mamba is slower or uses more memory than attention.
 
-## Live demo
+Authoritative artifacts:
 
-<!-- TODO(Week 5): embed the recorded GIF + hosted link -->
-_The hosted link and recorded demo are still pending._
+- [`results/week3-700m-v1/sweep_results.json`](results/week3-700m-v1/sweep_results.json) - machine-readable headline metrics and variant signatures
+- [`results/week3-700m-v1/sweep_table.md`](results/week3-700m-v1/sweep_table.md) - compact comparison table
+- [`results/week3-700m-v1/sweep_manifest.json`](results/week3-700m-v1/sweep_manifest.json) - run settings, data signature, completion state, and exact token exposure
+- [`results/week3-700m-v1/README.md`](results/week3-700m-v1/README.md) - interpretation and evidence boundary
 
-The demo is a Next.js frontend connected to a FastAPI backend. Enter a prompt to stream tokens
-and see live throughput. A local GPU run also reports VRAM use, and the interface can switch
-between trained ratio variants.
+The earlier 16.384M-token preview is preserved in [`results/sweep_results.json`](results/sweep_results.json) for the development record, but it is not the headline result.
 
-```
-Recruiter → GitHub → Vercel frontend ──POST /generate (SSE)──▶ FastAPI backend ──▶ ~50M model
-                       (always on)                              (free CPU host)      streams tokens
-```
+## What Week 3 establishes
 
-At roughly 50M parameters, the model can run on a free CPU host. Local execution is needed for
-GPU throughput and the VRAM meter; see `demo/README.md`.
+- All three ratio variants train to the same token exposure under one schedule.
+- The 1:3 run achieved the lowest validation perplexity in this sweep.
+- The best-perplexity spread is only 0.21, so one seed cannot establish statistical separation.
+- Run recovery is durable and auditable across checkpoints, append-only metrics, data identity, code identity, and RNG state.
+- Training throughput and peak allocated memory describe this PyTorch SSD implementation, not a fused linear-scan Mamba kernel.
 
----
+It does **not** yet establish inference throughput, recurrent-state memory, KV-cache scaling, 8K behavior, needle retrieval, or generation quality. Those are Week 4 measurements.
 
 ## Architecture
 
+```text
+token IDs
+   |
+tied embedding
+   |
+16 x HybridBlock
+   |-- RMSNorm -> Mamba-2 SSD or causal attention -> residual
+   `-- RMSNorm -> SwiGLU MLP -> residual
+   |
+RMSNorm -> tied LM head
 ```
-tokens ─▶ Embedding (tied) ─▶ N × HybridBlock ─▶ RMSNorm ─▶ LM head
 
-HybridBlock:
-  x = x + Mixer(RMSNorm(x))        # Mixer ∈ { Mamba-2 , CausalAttention }, set per-layer by the ratio
-  x = x + SwiGLU_MLP(RMSNorm(x))
+| Component | Locked setting |
+|---|---|
+| Model width | 448 |
+| Layers | 16 |
+| Vocabulary | 16,000 byte-level BPE tokens |
+| Attention | 7 heads x 64, RoPE, PyTorch SDPA |
+| Mamba-2 | inner width 896, 14 heads x 64, state size 128, convolution width 4 |
+| MLP | SwiGLU, hidden width 1,216 |
+| Context used for training | 512 tokens |
+| RoPE table limit | 8,192 positions, not yet evaluated end to end |
+
+The ratio is configuration, not a separate implementation. For example, 1:3 repeats:
+
+```python
+["mamba", "mamba", "mamba", "attention"]
 ```
 
-| | |
-| :--- | :--- |
-| Mamba-2 mixer | pure-PyTorch SSD dual form (masked-attention formulation, O(L²)) · d_state 128 · expand 2 · headdim 64 |
-| Attention mixer | causal multi-head (head_dim 64) · RoPE · PyTorch scaled-dot-product attention (SDPA) |
-| Shared | d_model 448 · 16 layers · bf16 autocast · trained on OpenWebText |
+## Data pipeline
 
-The attention:SSM ratio is one configuration value. A 1:3 variant, for example, uses the
-per-layer list `['mamba','mamba','mamba','attention']`, so the sweep does not require separate
-model implementations.
+The authoritative dataset is a locally prepared, read-only OpenWebText sampling pool:
 
----
+| Split | Documents | Tokens |
+|---|---:|---:|
+| Train | 4,113,788 | 5,000,001,094 |
+| Validation | 8,353 | 10,001,312 |
+
+Preparation pins the dataset revision, trains the 16k tokenizer separately, writes little-endian `uint16` memmaps, records hashes and source ranges, verifies split continuity, and only then promotes the staging directory. Training revalidates the prepared-data identity before opening a sweep namespace.
+
+The 700M figure is processed token positions sampled with replacement, not 700M unique corpus tokens.
+
+## Training protocol
+
+| Setting | Value |
+|---|---:|
+| Optimizer | fused AdamW on CUDA |
+| Precision | fp32 master weights, bf16 autocast, TF32 matmul |
+| Micro-batch | 8 sequences |
+| Gradient accumulation | 4 |
+| Sequence length | 512 |
+| Effective tokens / step | 16,384 |
+| Optimizer steps | 42,725 |
+| Tokens / variant | 700,006,400 |
+| Peak / minimum LR | 1e-3 / 1e-4 |
+| Warmup | 855 steps, then cosine decay |
+| Gradient clipping | 1.0 |
+| Gradient checkpointing | disabled for the sweep |
+
+Validation at each gate averages 50 deterministic batches per split. It samples 204,800 token positions, so it is repeatable but not a complete pass over the validation memmap.
 
 ## Quickstart
 
-```bash
-# 1. environment (Python 3.11 recommended for the SSM CUDA kernels)
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+Python 3.11 is recommended. Install the CUDA-enabled PyTorch build before the rest of the dependencies.
 
-# 2. install PyTorch for your CUDA first (Blackwell / RTX 5070 → cu128), then the rest
-pip install torch --index-url https://download.pytorch.org/whl/cu128
-pip install -r requirements.txt
-
-# 3. train the 16k tokenizer, then tokenize TinyStories into uint16 memmap shards
-python -m src.data.train_tokenizer --dataset tinystories --docs 100000 --vocab 16000
-python -m src.data.prepare_data   --dataset tinystories --train-docs 50000 --val-docs 22000
-
-# 4. sanity-check the parameter budget for a config
-python scripts/count_params.py --config configs/ratio_1_3.yaml
-
-# 5. train one variant; reuse the run ID to resume or skip a completed run
-python -m src.train.train --model-config configs/ratio_1_3.yaml --run-id debug-1
+```powershell
+uv venv --python 3.11 .venv
+.\.venv\Scripts\Activate.ps1
+uv pip install --python .venv\Scripts\python.exe torch --index-url https://download.pytorch.org/whl/cu128
+uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 ```
 
-The sweep runner keeps summaries in `results/<run-id>/` and each variant's manifest, metrics,
-resumable `last.pt`, and evaluation `best.pt` in `checkpoints/<run-id>/<variant>/`. The default
-8,000-step recipe is a **reduced 131.072M-token run per variant**, not the full Week-3 target:
+Run the tests:
 
-```bash
-# first build the immutable authoritative sampling pool (not run as part of repository verification)
-python -m src.data.prepare_data --dataset openwebtext \
-  --tokenizer data/tokenizer/openwebtext.json --out-dir data/openwebtext-5b \
-  --run-id owt-5b-20260809 --revision 79d93d786212f7344586290adb811d4ae6a1762c \
-  --train-tokens 5000000000 --val-tokens 10000000
-
-# standalone integrity check; the sweep performs this same check before creating run artifacts
-python -m src.data.prepare_data --validate-only data/openwebtext-5b
-
-# reduced readiness run: 8,000 × (8 batch × 4 accumulation × 512 tokens) = 131,072,000 tokens/variant
-python scripts/run_sweep.py --data-dir data/openwebtext-5b --run-id week3-131m-v1 --max-steps 8000
-
-# authoritative ~700M-token run: 42,725 steps = 700,006,400 tokens/variant
-# 855 warmup steps = ceil(2% × 42,725), as specified in the training plan
-python scripts/run_sweep.py --data-dir data/openwebtext-5b \
-  --run-id week3-700m-v1 --max-steps 42725 --warmup-steps 855
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
-Do not start the authoritative command from the current 72.7M-token preview memmap. Week 3 still
-requires the planned approximately 5B-token OpenWebText sampling pool to be prepared and verified first.
-The two uint16 token files require at least **10,020,000,000 bytes (9.33 GiB)** before whole-document
-overshoot; staging is renamed into place rather than copied. Reserve at least 12 GiB for the prepared
-artifacts, plus separate space for the Hugging Face cache. If streaming stops, the run-specific stage is
-normally preserved and the final directory remains absent; the interrupted-manifest update is best effort
-if the filesystem itself is failing. Choose a new run ID or inspect/remove the stage manually. The builder
-preflights current free space against the exact token-file lower bound, but whole-document overshoot, the
-download cache, and space already consumed by stale stages still require the documented reserve.
-An existing final directory is never overwritten. `--reuse-existing` only accepts the exact same verified
-source revision, targets, tokenizer, tool/runtime provenance, counts, and checksums. Authoritative
-OpenWebText builds require a full 40-hex commit revision and do not execute dataset repository code.
-Artifact names are fixed basenames, links/reparse points are rejected, and all reads use little-endian
-uint16 explicitly. Every sweep revalidates the manifest identity and artifact hashes before training starts.
+Prepare the small TinyStories debug corpus:
 
-If training stops, run the same command with the same run ID. Resume is accepted only when the
-training configuration, SHA-256 dataset identity, runtime-code fingerprint, and git provenance still
-match. A completed variant is skipped only after its manifest, exact step/token counts, finite result
-fields, artifact checksums, full metrics trajectory, and both `best.pt` and `last.pt` validate. Checkpoint
-loading uses PyTorch's restricted `weights_only=True` path, and a per-variant lock rejects concurrent
-writers. Earlier runs are never overwritten.
+```powershell
+.\.venv\Scripts\python.exe -m src.data.train_tokenizer --dataset tinystories --docs 100000 --vocab 16000
+.\.venv\Scripts\python.exe -m src.data.prepare_data --dataset tinystories --train-docs 50000 --val-docs 22000
+```
 
-> The current implementation deliberately uses the pure-PyTorch Mamba-2 SSD dual form; it does not
-> dynamically load or fall back from `mamba-ssm` CUDA kernels. This is portable to CPU, but its O(L²)
-> training behavior does not provide the speed or memory profile of a fused linear-scan kernel.
+Inspect one ratio and train a debug run:
 
----
+```powershell
+.\.venv\Scripts\python.exe scripts\count_params.py --config configs\ratio_1_3.yaml
+.\.venv\Scripts\python.exe -m src.train.train --model-config configs\ratio_1_3.yaml --run-id debug-1
+```
+
+## Reproducing the authoritative sweep
+
+The full prepared corpus requires at least 9.33 GiB for the two token files before whole-document overshoot, plus space for staging and the Hugging Face cache.
+
+```powershell
+# Build the immutable 5B-token sampling pool.
+.\.venv\Scripts\python.exe -m src.data.prepare_data `
+  --dataset openwebtext `
+  --tokenizer data/tokenizer/openwebtext.json `
+  --out-dir data/openwebtext-5b `
+  --run-id owt-5b-20260809 `
+  --revision 79d93d786212f7344586290adb811d4ae6a1762c `
+  --train-tokens 5000000000 `
+  --val-tokens 10000000
+
+# Verify the exact prepared identity without downloading or tokenizing again.
+.\.venv\Scripts\python.exe -m src.data.prepare_data --validate-only data/openwebtext-5b
+
+# Run or resume the three variants.
+.\.venv\Scripts\python.exe scripts\run_sweep.py `
+  --data-dir data/openwebtext-5b `
+  --run-id week3-700m-v1 `
+  --max-steps 42725 `
+  --warmup-steps 855
+```
+
+Reusing a run ID is accepted only when the numerical configuration, data identity, runtime-code fingerprint, and provenance agree. Completed variants are skipped only after their manifests, counters, metrics trajectory, result record, and `best.pt` / `last.pt` checks pass.
 
 ## Repository layout
 
-```
+```text
+configs/   ratio-specific model configurations
+data/      committed tokenizers; prepared corpora stay local
+results/   committed aggregate experiment results
+scripts/   parameter analysis and matched-token sweep runner
 src/
-  model/   HybridBlock, Mamba-2 mixer, attention mixer, the LM
-  data/    tokenization, sharding, dataloader
-  train/   training loop, optimizer, scheduler, checkpointing
-  eval/    perplexity, throughput, KV-cache, needle-in-haystack
-configs/   one config per ratio variant
-scripts/   count_params.py, prepare_data.py, plotting, sweep runner
-tests/     unit + smoke tests
-demo/      Next.js frontend + FastAPI backend
+  data/    tokenizer training, immutable preparation, memmap batching
+  model/   attention, Mamba-2 SSD, hybrid blocks, language model
+  train/   optimization, checkpointing, recovery, certification
+  eval/    Week 4 evaluation modules
+tests/     model, data, preparation, and training-reliability tests
+demo/      Week 5 generation application
 ```
 
----
+## Verification
+
+Current repository test result:
+
+```text
+33 passed, 1 skipped
+```
+
+The skipped test requires CUDA in the test process. The authoritative runs themselves were executed on an RTX 5070 12 GB with CUDA available.
 
 ## Roadmap
 
-- [x] Week 1 — Foundation: environment, data pipeline, param budget, baseline
-- [x] Week 2 — Hybrid block + ratio-configurable stack + training loop (converges on TinyStories, val ppl 11.4)
-- [x] Week 3 — Matched-compute sweep infra + OWT pipeline + reduced-scale preview (full-scale runs pending)
-- [ ] Week 4 — Evaluation: PPL, KV-cache vs context, needle-in-haystack, plots
-- [ ] Week 5 — Live demo (Next.js + FastAPI), hosted + local
-- [ ] Week 6 — Write-up + workshop-style paper
-
----
+- [x] Week 1 - environment, tokenizer, data pipeline, parameter budget
+- [x] Week 2 - hybrid model, configurable ratios, training loop, TinyStories convergence
+- [x] Week 3 - immutable 5B-token pool, recovery hardening, three-model 700M-token sweep
+- [ ] Week 4 - inference throughput, state / KV memory, 8K evaluation, needle retrieval, plots
+- [ ] Week 5 - Next.js and FastAPI generation demo, local GPU metrics, hosted CPU path
+- [ ] Week 6 - final documentation and workshop-style report
 
 ## References
 
-Attention Is All You Need (Vaswani et al., 2017) · Mamba (Gu & Dao, 2023) ·
-Transformers are SSMs / Mamba-2 (Dao & Gu, 2024) · Jamba (Lieber et al., 2024) ·
-Hymba (NVIDIA, 2024).
+- Vaswani et al. (2017), [Attention Is All You Need](https://arxiv.org/abs/1706.03762)
+- Gu and Dao (2023), [Mamba: Linear-Time Sequence Modeling with Selective State Spaces](https://arxiv.org/abs/2312.00752)
+- Dao and Gu (2024), [Transformers are SSMs: Generalized Models and Efficient Algorithms Through Structured State Space Duality](https://arxiv.org/abs/2405.21060)
+- Lieber et al. (2024), [Jamba: A Hybrid Transformer-Mamba Language Model](https://arxiv.org/abs/2403.19887)
+- Dong et al. (2024), [Hymba: A Hybrid-head Architecture for Small Language Models](https://arxiv.org/abs/2411.13676)
 
 ## License
 
-Released under the MIT License. © Karan Anchan
+Released under the MIT License. Copyright 2026 Karan Anchan.
