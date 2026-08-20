@@ -20,6 +20,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from src.model.config import ModelConfig
+from src.model.inference import Mamba2State
 from src.model.norm import RMSNorm
 
 
@@ -49,6 +50,32 @@ def ssd(x, dt, A, B, C, D):
     return y
 
 
+def ssd_stateful(x, dt, A, B, C, D, initial_state):
+    """Evaluate one bounded chunk and carry its exact recurrent state forward."""
+    _, l, _, _ = x.shape
+    x, dt, B, C = x.float(), dt.float(), B.float(), C.float()
+    A, initial_state = A.float(), initial_state.float()
+
+    dtA = dt * A
+    cumA = torch.cumsum(dtA, dim=1).transpose(1, 2)
+    decay = cumA[..., :, None] - cumA[..., None, :]
+    causal = torch.tril(torch.ones(l, l, device=x.device, dtype=torch.bool))
+    decay = decay.masked_fill(~causal, float("-inf")).exp()
+
+    cb = torch.einsum("bin,bjn->bij", C, B)
+    xdt = x * dt[..., None]
+    local_y = torch.einsum("bhij,bjhp->bihp", cb[:, None] * decay, xdt)
+
+    carry_scale = cumA.exp()
+    carried_y = torch.einsum("bhl,bhpn,bln->blhp", carry_scale, initial_state, C)
+    y = local_y + carried_y + x * D.float()[None, None, :, None]
+
+    end_scale = (cumA[..., -1, None] - cumA).exp()
+    local_state = torch.einsum("bhl,blhp,bln->bhpn", end_scale, xdt, B)
+    next_state = carry_scale[..., -1, None, None] * initial_state + local_state
+    return y, next_state
+
+
 class Mamba2Mixer(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
@@ -73,6 +100,22 @@ class Mamba2Mixer(nn.Module):
 
         self._reset_ssm_params()
 
+    def init_state(
+        self, batch_size: int, device: torch.device | str, dtype: torch.dtype
+    ) -> Mamba2State:
+        conv_tail = self.conv1d.kernel_size[0] - 1
+        return Mamba2State(
+            conv=torch.zeros(batch_size, self.conv_dim, conv_tail, device=device, dtype=dtype),
+            ssm=torch.zeros(
+                batch_size,
+                self.nheads,
+                self.headdim,
+                self.d_state,
+                device=device,
+                dtype=torch.float32,
+            ),
+        )
+
     def _reset_ssm_params(self):
         # A in [1, 16] like the paper, stored as log; dt_bias set so softplus(dt) starts small
         with torch.no_grad():
@@ -80,22 +123,69 @@ class Mamba2Mixer(nn.Module):
             dt = torch.empty(self.nheads).uniform_(0.001, 0.1)
             self.dt_bias.copy_(dt + torch.log(-torch.expm1(-dt)))  # inverse softplus
 
-    def forward(self, u: torch.Tensor) -> torch.Tensor:
-        B, L, _ = u.shape
+    def forward(
+        self, u: torch.Tensor, state: Mamba2State | None = None, chunk_size: int = 128
+    ) -> torch.Tensor:
+        batch, L, _ = u.shape
         z, xBC, dt = self.in_proj(u).split(
             [self.d_inner, self.conv_dim, self.nheads], dim=-1)
 
-        xBC = self.conv1d(xBC.transpose(1, 2))[..., :L].transpose(1, 2)  # causal conv
+        if state is None:
+            xBC = self.conv1d(xBC.transpose(1, 2))[..., :L].transpose(1, 2)
+        else:
+            expected_conv = (batch, self.conv_dim, self.conv1d.kernel_size[0] - 1)
+            expected_ssm = (batch, self.nheads, self.headdim, self.d_state)
+            if state.conv.shape != expected_conv or state.ssm.shape != expected_ssm:
+                raise ValueError("Mamba inference-state shape does not match this input and mixer")
+            projected = xBC.transpose(1, 2)
+            if projected.dtype != state.conv.dtype:
+                raise ValueError(
+                    f"Mamba convolution state uses {state.conv.dtype}, projected input uses "
+                    f"{projected.dtype}"
+                )
+            combined = torch.cat([state.conv, projected], dim=2)
+            xBC = F.conv1d(
+                combined,
+                self.conv1d.weight,
+                self.conv1d.bias,
+                groups=self.conv_dim,
+            ).transpose(1, 2)
+            tail = state.conv.shape[2]
+            if tail:
+                state.conv.copy_(combined[..., -tail:])
+
         xBC = F.silu(xBC)
         x, Bm, Cm = xBC.split([self.d_inner, self.ngroups * self.d_state,
                                self.ngroups * self.d_state], dim=-1)
 
-        x = x.view(B, L, self.nheads, self.headdim)
-        Bm = Bm.view(B, L, self.d_state)   # ngroups = 1
-        Cm = Cm.view(B, L, self.d_state)
+        x = x.view(batch, L, self.nheads, self.headdim)
+        Bm = Bm.view(batch, L, self.d_state)   # ngroups = 1
+        Cm = Cm.view(batch, L, self.d_state)
         A = -torch.exp(self.A_log)
         dt = F.softplus(dt + self.dt_bias)
 
-        y = ssd(x, dt, A, Bm, Cm, self.D).reshape(B, L, self.d_inner)
+        if state is None:
+            y = ssd(x, dt, A, Bm, Cm, self.D)
+        else:
+            if chunk_size <= 0:
+                raise ValueError("Mamba inference chunk size must be positive")
+            outputs = []
+            carried = state.ssm
+            for start in range(0, L, chunk_size):
+                stop = min(start + chunk_size, L)
+                chunk_y, carried = ssd_stateful(
+                    x[:, start:stop],
+                    dt[:, start:stop],
+                    A,
+                    Bm[:, start:stop],
+                    Cm[:, start:stop],
+                    self.D,
+                    carried,
+                )
+                outputs.append(chunk_y)
+            state.ssm.copy_(carried)
+            y = torch.cat(outputs, dim=1)
+
+        y = y.reshape(batch, L, self.d_inner)
         y = self.norm(y * F.silu(z))       # z gates, then normalize
         return self.out_proj(y.to(u.dtype))

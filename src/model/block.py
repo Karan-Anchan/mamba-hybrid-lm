@@ -10,6 +10,7 @@ from torch import nn
 
 from src.model.attention import CausalAttention
 from src.model.config import ModelConfig
+from src.model.inference import AttentionCache, LayerInferenceState, Mamba2State
 from src.model.mamba2 import Mamba2Mixer
 from src.model.mlp import SwiGLU
 from src.model.norm import RMSNorm
@@ -27,12 +28,15 @@ class HybridBlock(nn.Module):
             self.norm2 = RMSNorm(cfg.d_model)
             self.mlp = SwiGLU(cfg)
 
-    def forward(self, x, cos=None, sin=None, cache=None):
-        # attention needs positions + optional kv cache; mamba just needs the sequence
+    def forward(self, x, cos=None, sin=None, state: LayerInferenceState | None = None):
         if self.is_attn:
-            x = x + self.mixer(self.norm1(x), cos, sin, cache)
+            if state is not None and not isinstance(state, AttentionCache):
+                raise TypeError("attention block received a non-attention inference state")
+            x = x + self.mixer(self.norm1(x), cos, sin, state)
         else:
-            x = x + self.mixer(self.norm1(x))
+            if state is not None and not isinstance(state, Mamba2State):
+                raise TypeError("Mamba block received a non-Mamba inference state")
+            x = x + self.mixer(self.norm1(x), state)
         if self.has_mlp:
             x = x + self.mlp(self.norm2(x))
         return x

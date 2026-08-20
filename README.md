@@ -5,7 +5,7 @@
 A 52-54M parameter language-model study that interleaves Mamba-2 selective state-space blocks with causal attention.
 
 [![Week 3](https://img.shields.io/badge/milestone-Week_3_complete-55a36f?style=for-the-badge)](#week-3-result)
-[![Tests](https://img.shields.io/badge/tests-33_passed-3f7f5f?style=for-the-badge)](#verification)
+[![Tests](https://img.shields.io/badge/tests-44_passed-3f7f5f?style=for-the-badge)](#verification)
 [![Precision](https://img.shields.io/badge/precision-bf16-596c74?style=for-the-badge)](#training-protocol)
 [![GPU](https://img.shields.io/badge/GPU-RTX_5070_12GB-66756c?style=for-the-badge)](#training-protocol)
 
@@ -174,6 +174,33 @@ The full prepared corpus requires at least 9.33 GiB for the two token files befo
 
 Reusing a run ID is accepted only when the numerical configuration, data identity, runtime-code fingerprint, and provenance agree. Completed variants are skipped only after their manifests, counters, metrics trajectory, result record, and `best.pt` / `last.pt` checks pass.
 
+## Running the Week 4 evaluation
+
+The inference path keeps one typed state per layer: attention blocks append RoPE-positioned K/V tensors,
+while Mamba blocks carry the depthwise-convolution tail and fp32 recurrent SSM state. Long Mamba prefills use
+bounded SSD chunks, so an 8K prompt never constructs the training path's full-context `L x L` decay matrix.
+
+Run a short end-to-end check against one real checkpoint:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_week4_eval.py `
+  --smoke `
+  --ratio 1:3 `
+  --run-id week4-smoke
+```
+
+Run or resume the certified three-variant protocol only from a clean implementation commit:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_week4_eval.py `
+  --run-id week4-eval-v1 `
+  --require-clean
+```
+
+The runner validates every Week 3 checkpoint against its completed manifest and SHA-256 registration before
+loading weights. It writes per-variant recovery records under the ignored `outputs/week4-eval/` workspace,
+then derives JSON, Markdown, SVG plots, and a signed artifact manifest under `results/<run-id>/`.
+
 ## Repository layout
 
 ```text
@@ -195,7 +222,7 @@ demo/      Week 5 generation application
 Current repository test result:
 
 ```text
-33 passed, 1 skipped
+44 passed, 1 skipped
 ```
 
 The skipped test requires CUDA in the test process. The authoritative runs themselves were executed on an RTX 5070 12 GB with CUDA available.

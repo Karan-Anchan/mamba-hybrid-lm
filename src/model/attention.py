@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from src.model.config import ModelConfig
+from src.model.inference import AttentionCache
 
 
 class RotaryEmbedding(nn.Module):
@@ -54,25 +55,34 @@ class CausalAttention(nn.Module):
         self.qkv = nn.Linear(cfg.d_model, 3 * cfg.d_model, bias=cfg.attn_bias)
         self.out = nn.Linear(cfg.d_model, cfg.d_model, bias=cfg.attn_bias)
 
-    def forward(self, x, cos, sin, cache: dict | None = None):
+    def forward(self, x, cos, sin, cache: AttentionCache | None = None):
         B, L, _ = x.shape
         q, k, v = self.qkv(x).split(x.shape[-1], dim=-1)
         # (B, L, nheads, hd) -> (B, nheads, L, hd)
         q = q.view(B, L, self.nheads, self.hd).transpose(1, 2)
         k = k.view(B, L, self.nheads, self.hd).transpose(1, 2)
         v = v.view(B, L, self.nheads, self.hd).transpose(1, 2)
+        if cache is not None:
+            # Keep inference K/V in the bf16 cache contract instead of letting fp32 RoPE upcast K.
+            cos, sin = cos.to(q.dtype), sin.to(q.dtype)
         q, k = apply_rope(q, k, cos, sin)
 
-        if cache is not None and "k" in cache:
-            # prepend what we've already seen, then this step attends to the whole thing
-            k = torch.cat([cache["k"], k], dim=2)
-            v = torch.cat([cache["v"], v], dim=2)
+        cached = cache.length if cache is not None else 0
+        if cached:
+            k = torch.cat([cache.key, k], dim=2)
+            v = torch.cat([cache.value, v], dim=2)
         if cache is not None:
-            cache["k"], cache["v"] = k, v
+            cache.key, cache.value = k, v
 
-        # is_causal only when doing a full parallel pass; with a cache the new tokens
-        # legitimately see all cached positions, so I drop the causal mask there
-        is_causal = cache is None or k.shape[2] == L
-        y = F.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
+        attn_mask = None
+        is_causal = cached == 0
+        if cached and L > 1:
+            # Each query can see all cached positions and only earlier positions in this new chunk.
+            query_positions = cached + torch.arange(L, device=x.device)
+            key_positions = torch.arange(cached + L, device=x.device)
+            attn_mask = key_positions[None, :] <= query_positions[:, None]
+        y = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=attn_mask, is_causal=is_causal
+        )
         y = y.transpose(1, 2).reshape(B, L, -1)
         return self.out(y)
