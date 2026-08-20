@@ -4,7 +4,7 @@
 
 A 52-54M parameter language-model study that interleaves Mamba-2 selective state-space blocks with causal attention.
 
-[![Week 3](https://img.shields.io/badge/milestone-Week_3_complete-55a36f?style=for-the-badge)](#week-3-result)
+[![Week 4](https://img.shields.io/badge/milestone-Week_4_complete-2b8cbe?style=for-the-badge)](#week-4-result)
 [![Tests](https://img.shields.io/badge/tests-44_passed-3f7f5f?style=for-the-badge)](#verification)
 [![Precision](https://img.shields.io/badge/precision-bf16-596c74?style=for-the-badge)](#training-protocol)
 [![GPU](https://img.shields.io/badge/GPU-RTX_5070_12GB-66756c?style=for-the-badge)](#training-protocol)
@@ -13,11 +13,42 @@ A 52-54M parameter language-model study that interleaves Mamba-2 selective state
 
 ## Research question
 
-> At a fixed token budget and near-matched parameter scale, how does the attention:SSM layer ratio affect validation perplexity and observed training behavior in a small hybrid language model?
+> At a fixed token budget and near-matched parameter scale, how does the attention:SSM layer ratio affect validation perplexity, generation speed, and inference-state memory in a small hybrid language model?
 
 I trained three 16-layer variants with attention:SSM ratios of **1:3**, **1:7**, and **1:15**. Every run used the same prepared OpenWebText pool, optimizer schedule, batch geometry, and **700,006,400 sampled token positions**.
 
-The current Mamba-2 path uses the portable PyTorch SSD dual form. It is mathematically useful for the controlled architecture comparison, but it materializes an `L x L` matrix and does not reproduce the speed or memory profile of a fused linear scan.
+The training path uses the portable PyTorch SSD dual form. Week 4 adds the exact recurrent form for inference,
+including a bounded-chunk prefill that avoids a full-context Mamba `L x L` matrix. It still does not reproduce
+the optimized speed profile of fused Mamba kernels.
+
+## Week 4 result
+
+All three best Week 3 checkpoints were re-evaluated under one batch-1 bf16 inference protocol. The table uses
+the longest 8,192-token prompt; decode is the median of three synchronized 32-step greedy runs.
+
+| Ratio | Validation PPL | 8K prefill tok/s | 8K decode tok/s | Attention KV | Mamba state | Total logical state | Needle exact match |
+|:--:|--:|--:|--:|--:|--:|--:|--:|
+| **1:3** | **26.301** | **14,143** | 46.8 | 56.00 MiB | 5.33 MiB | 61.33 MiB | 3/15 |
+| 1:7 | 26.466 | 12,127 | **49.0** | 28.00 MiB | 6.22 MiB | 34.22 MiB | 3/15 |
+| **1:15** | 26.513 | 11,876 | 44.6 | **14.00 MiB** | 6.66 MiB | **20.66 MiB** | 3/15 |
+
+The ratio creates a clean memory trade-off. Moving from 1:3 to 1:15 reduces 8K logical state by **66.3%**
+while increasing validation perplexity by **0.212**. More Mamba does not make this implementation faster:
+1:3 has the strongest prefill rate, and decode stays in a narrow, non-monotonic 44.6–49.0 tok/s band.
+
+Retrieval is the shared weakness. Each ratio retrieves 3 of 15 pre-registered access codes; no model records an
+exact match at 2K, 4K, or 8K. An 8K RoPE table and bounded recurrent memory therefore demonstrate execution,
+not effective use of that context after training only at length 512.
+
+Authoritative Week 4 artifacts:
+
+- [`results/week4-eval-v1/evaluation_results.json`](results/week4-eval-v1/evaluation_results.json) - every raw timing, memory row, and retrieval answer
+- [`results/week4-eval-v1/evaluation_table.md`](results/week4-eval-v1/evaluation_table.md) - compact 8K comparison
+- [`results/week4-eval-v1/manifest.json`](results/week4-eval-v1/manifest.json) - clean Git provenance, checkpoint identities, protocol, runtime, and artifact hashes
+- [`results/week4-eval-v1/plots/`](results/week4-eval-v1/plots/) - code-native SVG figures
+
+These are single-GPU, single-run measurements with three timing repeats, not confidence intervals. Logical
+state is exact tensor storage; active and peak CUDA deltas are reported separately in the JSON.
 
 ## Week 3 result
 
@@ -50,7 +81,9 @@ The earlier 16.384M-token preview is preserved in [`results/sweep_results.json`]
 - Run recovery is durable and auditable across checkpoints, append-only metrics, data identity, code identity, and RNG state.
 - Training throughput and peak allocated memory describe this PyTorch SSD implementation, not a fused linear-scan Mamba kernel.
 
-It does **not** yet establish inference throughput, recurrent-state memory, KV-cache scaling, 8K behavior, needle retrieval, or generation quality. Those are Week 4 measurements.
+Week 4 adds inference throughput, recurrent/KV state scaling, 8K execution, and controlled needle retrieval.
+It still does not establish broad generation quality, run-to-run statistical separation, or fused-kernel Mamba
+performance.
 
 ## Architecture
 
@@ -75,7 +108,7 @@ RMSNorm -> tied LM head
 | Mamba-2 | inner width 896, 14 heads x 64, state size 128, convolution width 4 |
 | MLP | SwiGLU, hidden width 1,216 |
 | Context used for training | 512 tokens |
-| RoPE table limit | 8,192 positions, not yet evaluated end to end |
+| RoPE table limit | 16,384 positions; evaluated with 8,192-token prompts plus decode |
 
 The ratio is configuration, not a separate implementation. For example, 1:3 repeats:
 
@@ -232,7 +265,7 @@ The skipped test requires CUDA in the test process. The authoritative runs thems
 - [x] Week 1 - environment, tokenizer, data pipeline, parameter budget
 - [x] Week 2 - hybrid model, configurable ratios, training loop, TinyStories convergence
 - [x] Week 3 - immutable 5B-token pool, recovery hardening, three-model 700M-token sweep
-- [ ] Week 4 - inference throughput, state / KV memory, 8K evaluation, needle retrieval, plots
+- [x] Week 4 - recurrent inference, throughput, state / KV memory, 8K evaluation, needle retrieval, plots
 - [ ] Week 5 - Next.js and FastAPI generation demo, local GPU metrics, hosted CPU path
 - [ ] Week 6 - final documentation and workshop-style report
 

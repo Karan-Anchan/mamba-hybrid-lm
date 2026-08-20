@@ -1,0 +1,5 @@
+# Result manifests hash exact bytes, so keep their text artifacts stable on every platform.
+.gitattributes text eol=lf
+results/**/*.json text eol=lf
+results/**/*.md text eol=lf
+results/**/*.svg text eol=lf
