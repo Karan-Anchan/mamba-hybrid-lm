@@ -1,0 +1,8 @@
+*
+!src/
+!src/**
+!demo/
+!demo/**
+!data/
+!data/tokenizer/
+!data/tokenizer/openwebtext.json

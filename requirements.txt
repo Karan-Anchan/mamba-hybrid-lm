@@ -32,8 +32,10 @@ numpy>=1.26
 wandb>=0.18
 tqdm>=4.66
 
-# --- Demo ---
-streamlit>=1.38
+# --- Demo API ---
+fastapi>=0.116
+uvicorn[standard]>=0.35
 
 # --- Dev / testing ---
 pytest>=8.3
+httpx2>=2.12

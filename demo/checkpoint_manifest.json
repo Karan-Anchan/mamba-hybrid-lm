@@ -1,0 +1,11 @@
+{
+  "status": "completed",
+  "ratio": "1:3",
+  "signature": "c863e18d81873978947481230c26dea7f692b27977a8841e28b416d55eaa396b",
+  "artifacts": {
+    "best": "best.pt"
+  },
+  "artifact_sha256": {
+    "best": "0995d848d8538a0169151e94388660554dcf90ce93c9a5bb2fa18ae1aec0504c"
+  }
+}
