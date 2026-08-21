@@ -1,0 +1,15 @@
+{
+  "artifact_sha256": {
+    "README.md": "5285b3589c61e9ca80b9db4d67a014a332d8dd2cb22f38430339ab02b6997e17",
+    "analysis.json": "a29b6514da1a74edd52b0a29a87a451156f095e598398d6631f5a3a70833a1b0",
+    "plots/ratio_tradeoffs.svg": "d5138ae358e3c1141fe33356c9adabf9418c0b40ee270636d6acb223449ec81e",
+    "plots/runtime_comparison.svg": "efbd8faa9bc61b2290fbd52c4aa22c4e7f4d4daa5f7a3d861b8c9f34e741843f",
+    "plots/state_crossover.svg": "79d2e48664ddcc594d7980370ea1d993a049a588e92b140662e28fc98e5c2fbc"
+  },
+  "schema": 1,
+  "source_sha256": {
+    "results\\week4-eval-v1\\evaluation_results.json": "12b741d651b427743cd4cd15b0ea5dec1c071342c93ad862bf14d0bff668f4b9",
+    "results\\week5-generation-cpu-matched-v1\\generation_results.json": "bf61230b6afb1467a3008bcd6a2211f97e141225a20fb7b2a15f1721f0a97c3f",
+    "results\\week5-generation-cuda-v1\\generation_results.json": "94779be6f662b4c830e9f68a12876f5dc4668795e589be70edbcecc8c68e85dc"
+  }
+}
