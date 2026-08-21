@@ -4,10 +4,14 @@
 
 A 52-54M parameter language-model study that interleaves Mamba-2 selective state-space blocks with causal attention.
 
-[![Week 4](https://img.shields.io/badge/milestone-Week_4_complete-2b8cbe?style=for-the-badge)](#week-4-result)
-[![Tests](https://img.shields.io/badge/tests-44_passed-3f7f5f?style=for-the-badge)](#verification)
+[![Week 5](https://img.shields.io/badge/milestone-Week_5_complete-2b8cbe?style=for-the-badge)](#week-5-result)
+[![Tests](https://img.shields.io/badge/tests-55_passed-3f7f5f?style=for-the-badge)](#verification)
 [![Precision](https://img.shields.io/badge/precision-bf16-596c74?style=for-the-badge)](#training-protocol)
 [![GPU](https://img.shields.io/badge/GPU-RTX_5070_12GB-66756c?style=for-the-badge)](#training-protocol)
+
+[**Open the experiment showcase**](https://karan-anchan.github.io/mamba-hybrid-lm-showcase/) ·
+[Technical reference](https://karan-anchan.github.io/mamba-hybrid-lm-explained/) ·
+[Generation API guide](demo/README.md)
 
 </div>
 
@@ -20,6 +24,45 @@ I trained three 16-layer variants with attention:SSM ratios of **1:3**, **1:7**,
 The training path uses the portable PyTorch SSD dual form. Week 4 adds the exact recurrent form for inference,
 including a bounded-chunk prefill that avoids a full-context Mamba `L x L` matrix. It still does not reproduce
 the optimized speed profile of fused Mamba kernels.
+
+## Week 5 result
+
+Week 5 turns the certified checkpoints into a reproducible generation system. A one-model-at-a-time FastAPI
+service exposes JSON and token-streaming endpoints, verifies checkpoint identity before loading, reports real
+latency and memory, and catches out-of-memory failures without terminating the process. The public showcase is
+a separate React site that can use this API when a model host is available. Its GitHub Pages deployment stays in
+clearly labelled **recorded evidence mode** otherwise; it never presents stored text as a live model response.
+
+The matched sampled-generation protocol uses three registered prompts, 48 generated tokens, temperature 0.8,
+top-k 40, and seeds 1701-1703. Values below are medians across those prompts.
+
+| Ratio | Validation PPL | GPU generation tok/s | TTFT | Peak VRAM | State near 57 tokens | State at 8K |
+|:--:|--:|--:|--:|--:|--:|--:|
+| **1:3** | **26.301** | **52.32** | **20.3 ms** | **238.5 MiB** | **5.72 MiB** | 61.33 MiB |
+| 1:7 | 26.466 | 48.26 | 21.3 ms | 244.6 MiB | 6.41 MiB | 34.22 MiB |
+| **1:15** | 26.513 | 48.28 | 23.1 ms | 246.8 MiB | 6.76 MiB | **20.66 MiB** |
+
+The central result is context-dependent. At short contexts, fixed recurrent state makes 1:3 use **15.4% less**
+logical state than 1:15. Their calculated curves cross near **260 cached tokens**; beyond that point, attention
+KV growth dominates, and 1:15 reaches a **66.3%** state reduction at 8K for a **0.212** perplexity increase.
+In this implementation, 1:3 is also 8.4% faster than 1:7 during sampled generation, while 1:7 and 1:15 differ
+by only 0.04% in this small protocol.
+
+The matched Ryzen 7700 run reaches **40.44 tok/s**, or 77.3% of the local RTX 5070's 1:3 rate. That supports a
+local CPU fallback, not a claim about constrained cloud CPUs. Generated samples also drift, repeat, and invent
+facts, so this remains a systems experiment rather than a production assistant.
+
+![Ratio quality, speed, and long-context state trade-offs](results/week5-analysis-v1/plots/ratio_tradeoffs.svg)
+
+![Logical inference-state crossover by cached context](results/week5-analysis-v1/plots/state_crossover.svg)
+
+Authoritative Week 5 artifacts:
+
+- [`results/week5-analysis-v1/`](results/week5-analysis-v1/) - joined findings, machine-readable analysis, vector plots, and hash manifest
+- [`results/week5-generation-cuda-v1/`](results/week5-generation-cuda-v1/) - RTX 5070 sampled-generation records
+- [`results/week5-generation-cpu-matched-v1/`](results/week5-generation-cpu-matched-v1/) - protocol-matched Ryzen 7700 records
+- [`demo/README.md`](demo/README.md) - local and container service instructions
+- [Public experiment showcase](https://karan-anchan.github.io/mamba-hybrid-lm-showcase/) - interactive architecture, charts, evidence replay, and optional live API client
 
 ## Week 4 result
 
@@ -234,6 +277,21 @@ The runner validates every Week 3 checkpoint against its completed manifest and 
 loading weights. It writes per-variant recovery records under the ignored `outputs/week4-eval/` workspace,
 then derives JSON, Markdown, SVG plots, and a signed artifact manifest under `results/<run-id>/`.
 
+## Running the Week 5 generation service
+
+Start the verified 1:3 checkpoint on the local GPU:
+
+```powershell
+$env:MAMBA_DEVICE = "cuda"
+$env:MAMBA_CORS_ORIGINS = "http://localhost:5173"
+.\.venv\Scripts\python.exe -m uvicorn src.serve.app:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+`GET /health` reports the loaded model and device. `POST /v1/generate` returns one measured response, while
+`POST /v1/generate/stream` sends token and completion events over Server-Sent Events. Ratio switches unload the
+current checkpoint before loading another so three models never occupy the 12 GB GPU together. See the
+[generation API guide](demo/README.md) for request fields, limits, CPU mode, and container deployment.
+
 ## Repository layout
 
 ```text
@@ -245,9 +303,10 @@ src/
   data/    tokenizer training, immutable preparation, memmap batching
   model/   attention, Mamba-2 SSD, hybrid blocks, language model
   train/   optimization, checkpointing, recovery, certification
-  eval/    Week 4 evaluation modules
-tests/     model, data, preparation, and training-reliability tests
-demo/      Week 5 generation application
+  eval/    Week 4 evaluation and Week 5 analysis modules
+  serve/   verified checkpoint registry and FastAPI generation service
+tests/     model, data, training, inference, generation, service, and reporting tests
+demo/      Week 5 API deployment files and operator guide
 ```
 
 ## Verification
@@ -255,7 +314,7 @@ demo/      Week 5 generation application
 Current repository test result:
 
 ```text
-44 passed, 1 skipped
+55 passed, 1 skipped
 ```
 
 The skipped test requires CUDA in the test process. The authoritative runs themselves were executed on an RTX 5070 12 GB with CUDA available.
@@ -266,7 +325,7 @@ The skipped test requires CUDA in the test process. The authoritative runs thems
 - [x] Week 2 - hybrid model, configurable ratios, training loop, TinyStories convergence
 - [x] Week 3 - immutable 5B-token pool, recovery hardening, three-model 700M-token sweep
 - [x] Week 4 - recurrent inference, throughput, state / KV memory, 8K evaluation, needle retrieval, plots
-- [ ] Week 5 - Next.js and FastAPI generation demo, local GPU metrics, hosted CPU path
+- [x] Week 5 - FastAPI generation, matched CPU/GPU metrics, analysis plots, public React showcase
 - [ ] Week 6 - final documentation and workshop-style report
 
 ## References
