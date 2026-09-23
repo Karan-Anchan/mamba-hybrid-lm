@@ -10,7 +10,6 @@ A 52-54M parameter language-model study that interleaves Mamba-2 selective state
 [![GPU](https://img.shields.io/badge/GPU-RTX_5070_12GB-66756c?style=for-the-badge)](#training-protocol)
 
 [**Open the experiment showcase**](https://karan-anchan.github.io/mamba-hybrid-lm-showcase/) ·
-[Technical reference](https://karan-anchan.github.io/mamba-hybrid-lm-explained/) ·
 [Generation API guide](demo/README.md)
 
 </div>
