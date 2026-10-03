@@ -1,0 +1,19 @@
+# Pure-Mamba control at the same width/depth as the historical hybrid family.
+# Parameter count differs: this isolates layer type at common geometry, not equal capacity.
+name: "mamba-only"
+ratio: "0:1"
+vocab_size: 16000
+d_model: 448
+n_layers: 16
+tie_embeddings: true
+head_dim: 64
+attn_bias: false
+expand: 2
+d_state: 128
+mamba_headdim: 64
+d_conv: 4
+n_groups: 1
+mlp_ratio: 2.6667
+mlp_multiple_of: 64
+mlp_bias: false
+mlp_on_every_layer: true

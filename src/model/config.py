@@ -10,18 +10,39 @@ period (SSM layers first) — starting a stack with attention isn't the usual hy
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
+
+
+def _positive_int(name: str, value: object) -> None:
+    """Reject malformed shapes before any module or checkpoint is constructed."""
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+
+
+def _ratio_parts(ratio: str) -> tuple[int, int]:
+    if not isinstance(ratio, str):
+        raise ValueError("ratio must be an 'attention:ssm' string of nonnegative integers")
+    parts = ratio.split(":")
+    if len(parts) != 2 or any(not part.strip().isascii() or not part.strip().isdecimal()
+                              for part in parts):
+        raise ValueError("ratio must contain two nonnegative integers, e.g. '1:3'")
+    attention, mamba = (int(part) for part in parts)
+    if attention + mamba == 0:
+        raise ValueError("ratio must have a positive period; '0:0' has no layers")
+    return attention, mamba
 
 
 def build_layer_pattern(n_layers: int, ratio: str) -> list[str]:
     """Build the per-layer type list, e.g. ['mamba','mamba','mamba','attention', ...].
 
     ratio is "a:s" (attention:ssm). Period is a+s, with the s SSM layers first and the a attention
-    layer(s) after. If n_layers doesn't divide evenly into periods, the leftover just becomes SSM
-    layers (the cheaper, more common type) so I still get exactly the depth I asked for.
+    layer(s) after. An incomplete final period keeps that same order, so the realized counts
+    can differ from the requested ratio. '1:0' and '0:1' are the pure-attention and pure-SSM
+    controls, respectively.
     """
-    a_str, s_str = ratio.split(":")
-    a, s = int(a_str), int(s_str)
+    _positive_int("n_layers", n_layers)
+    a, s = _ratio_parts(ratio)
     period = a + s
     pattern: list[str] = []
     for i in range(n_layers):
@@ -67,11 +88,43 @@ class ModelConfig:
     layer_types: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        for name in (
+            "vocab_size", "d_model", "n_layers", "head_dim", "expand", "d_state",
+            "mamba_headdim", "d_conv", "n_groups", "mlp_multiple_of",
+        ):
+            _positive_int(name, getattr(self, name))
+        for name in ("tie_embeddings", "attn_bias", "mlp_bias", "mlp_on_every_layer"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be a boolean")
+        _ratio_parts(self.ratio)  # Validate the recorded ratio even with an explicit layer list.
+        if self.d_model % self.head_dim != 0:
+            raise ValueError("d_model must be divisible by head_dim")
+        if self.head_dim % 2 != 0:
+            raise ValueError("head_dim must be even for rotary position embeddings")
+        d_inner = self.expand * self.d_model
+        if d_inner % self.mamba_headdim != 0:
+            raise ValueError("d_inner must be divisible by mamba_headdim")
+        if self.n_groups != 1:
+            raise ValueError("n_groups must be 1; grouped Mamba B/C are not implemented")
+        if (
+            not isinstance(self.mlp_ratio, (int, float))
+            or isinstance(self.mlp_ratio, bool)
+            or not math.isfinite(self.mlp_ratio)
+            or self.mlp_ratio <= 0
+        ):
+            raise ValueError("mlp_ratio must be a finite positive number")
+        hidden = self.mlp_ratio * self.d_model
+        if not math.isfinite(hidden) or hidden < 1:
+            raise ValueError("mlp_ratio * d_model must produce at least one finite hidden unit")
+        if not isinstance(self.layer_types, list):
+            raise ValueError("layer_types must be a list")
         if not self.layer_types:
             self.layer_types = build_layer_pattern(self.n_layers, self.ratio)
-        assert self.d_model % self.head_dim == 0, "d_model must be divisible by head_dim"
-        d_inner = self.expand * self.d_model
-        assert d_inner % self.mamba_headdim == 0, "d_inner must be divisible by mamba_headdim"
+        if len(self.layer_types) != self.n_layers:
+            raise ValueError("layer_types must contain exactly n_layers entries")
+        if any(not isinstance(value, str) or value not in ("attention", "mamba")
+               for value in self.layer_types):
+            raise ValueError("layer_types entries must be 'attention' or 'mamba'")
 
     # convenience accessors -------------------------------------------------
     @property
@@ -93,6 +146,11 @@ class ModelConfig:
     @property
     def n_mamba_layers(self) -> int:
         return sum(t == "mamba" for t in self.layer_types)
+
+    @property
+    def realized_ratio(self) -> str:
+        """Actual attention:SSM counts, including a partial period or explicit placement."""
+        return f"{self.n_attention_layers}:{self.n_mamba_layers}"
 
     @property
     def mlp_hidden(self) -> int:

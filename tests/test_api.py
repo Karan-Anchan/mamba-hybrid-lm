@@ -1,8 +1,13 @@
 """FastAPI response, streaming, and availability contracts."""
 
 import json
+import asyncio
+import threading
+from dataclasses import replace
 from pathlib import Path
 
+import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from src.generation import GenerationMetrics, GenerationResult, SamplingSettings, TokenEvent
@@ -98,3 +103,79 @@ def test_invalid_request_and_runtime_error_are_friendly(tmp_path):
     assert invalid.status_code == 422
     assert unavailable.status_code == 422
     assert unavailable.json()["detail"] == "ratio is not available"
+
+
+@pytest.mark.parametrize("path", ["/v1/generate", "/v1/generate/stream"])
+@pytest.mark.parametrize("worker_fails", [False, True])
+def test_cancelled_client_keeps_generation_serialized_until_thread_finishes(tmp_path, path, worker_fails):
+    class BlockingRuntime(FakeRuntime):
+        def __init__(self):
+            self.first_entered = threading.Event()
+            self.second_entered = threading.Event()
+            self.release_first = threading.Event()
+            self.first_finished = threading.Event()
+            self.loaded_ratio = None
+            self.active_workers = 0
+            self.max_active_workers = 0
+            self.mutex = threading.Lock()
+
+        def generate(self, prompt, ratio, sampling, on_token=None):
+            with self.mutex:
+                self.active_workers += 1
+                self.max_active_workers = max(self.max_active_workers, self.active_workers)
+            try:
+                self.loaded_ratio = ratio  # represent the registry switching its checkpoint
+                if prompt == "first":
+                    self.first_entered.set()
+                    if not self.release_first.wait(timeout=5):
+                        raise RuntimeError("test failed to release the generation worker")
+                    assert self.loaded_ratio == "1:3"
+                    if worker_fails:
+                        raise RuntimeError("simulated generation failure after cancellation")
+                else:
+                    self.second_entered.set()
+                return replace(super().generate(prompt, "1:3", sampling, on_token), ratio=ratio)
+            finally:
+                with self.mutex:
+                    self.active_workers -= 1
+                if prompt == "first":
+                    self.first_finished.set()
+
+    async def exercise():
+        runtime = BlockingRuntime()
+        settings = AppSettings(RuntimeSettings(tmp_path, tmp_path / "unused", eager_load=False), ())
+        application = create_app(runtime, settings)
+        async with application.router.lifespan_context(application):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url="http://test") as client:
+                first = asyncio.create_task(client.post(path, json={"prompt": "first", "ratio": "1:3"}))
+                second = None
+                try:
+                    assert await asyncio.to_thread(runtime.first_entered.wait, 2)
+                    first.cancel()  # cancel a real in-flight ASGI request while its thread is blocked
+                    with pytest.raises(asyncio.CancelledError):
+                        await asyncio.wait_for(first, timeout=1)
+                    assert application.state.generation_lock.locked()
+                    assert not runtime.first_finished.is_set()
+
+                    second = asyncio.create_task(client.post(
+                        "/v1/generate", json={"prompt": "second", "ratio": "1:7"},
+                    ))
+                    assert not await asyncio.to_thread(runtime.second_entered.wait, 0.15)
+                    assert runtime.loaded_ratio == "1:3"
+                    assert not second.done()
+
+                    runtime.release_first.set()
+                    response = await asyncio.wait_for(second, timeout=2)
+                    assert response.status_code == 200
+                    assert response.json()["ratio"] == "1:7"
+                    assert runtime.first_finished.is_set()
+                    assert runtime.max_active_workers == 1
+                finally:
+                    runtime.release_first.set()
+                    await asyncio.gather(first, *([second] if second is not None else []), return_exceptions=True)
+
+        assert runtime.active_workers == 0
+        assert not application.state.generation_lock.locked()
+        assert not application.state.generation_workers  # shutdown leaves no model worker behind
+
+    asyncio.run(exercise())

@@ -4,8 +4,9 @@ import pytest
 import torch
 
 from src.model.config import ModelConfig
-from src.model.inference import AttentionCache
+from src.model.inference import AttentionCache, Mamba2State
 from src.model.lm import HybridLM
+from src.model.mamba2 import Mamba2Mixer
 
 
 def tiny_config(ratio: str = "1:3", n_layers: int = 4) -> ModelConfig:
@@ -143,3 +144,185 @@ def test_cuda_bf16_prefill_matches_parallel():
     attention_states = [layer for layer in state.layers if isinstance(layer, AttentionCache)]
     assert all(layer.key.dtype == torch.bfloat16 for layer in attention_states)
     assert all(layer.value.dtype == torch.bfloat16 for layer in attention_states)
+
+
+def tiny_mixer(d_conv: int = 4) -> Mamba2Mixer:
+    return Mamba2Mixer(ModelConfig(
+        ratio="0:1", d_model=16, n_layers=1, vocab_size=32, head_dim=8,
+        mamba_headdim=8, d_state=4, d_conv=d_conv, mlp_multiple_of=8,
+    )).eval()
+
+
+@pytest.mark.parametrize("chunk_size", [0, -1, True, 1.5, "4"])
+def test_invalid_chunk_cannot_change_retained_memory(chunk_size):
+    mixer = tiny_mixer()
+    state = mixer.init_state(1, "cpu", torch.float32)
+    state.conv.normal_()
+    state.ssm.normal_()
+    before = state.clone()
+    with torch.no_grad(), pytest.raises(ValueError, match="chunk size"):
+        mixer(torch.randn(1, 5, 16), state, chunk_size=chunk_size)
+    assert torch.equal(state.conv, before.conv)
+    assert torch.equal(state.ssm, before.ssm)
+
+
+@pytest.mark.parametrize("kind, message", [
+    ("conv_shape", "shape"), ("ssm_shape", "shape"),
+    ("conv_dtype", "convolution state"), ("ssm_dtype", "SSM state"),
+])
+def test_invalid_state_fails_before_projection_or_memory_update(kind, message):
+    mixer = tiny_mixer()
+    state = mixer.init_state(1, "cpu", torch.float32)
+    state.conv.normal_()
+    state.ssm.normal_()
+    if kind == "conv_shape":
+        state.conv = state.conv[:, :-1]
+    elif kind == "ssm_shape":
+        state.ssm = state.ssm[..., :-1]
+    elif kind == "conv_dtype":
+        state.conv = state.conv.to(torch.float64)
+    else:
+        state.ssm = state.ssm.to(torch.bfloat16)
+    before = state.clone()
+    projected = []
+    mixer.in_proj.register_forward_pre_hook(lambda *_: projected.append(True))
+    with torch.no_grad(), pytest.raises(ValueError, match=message):
+        mixer(torch.randn(1, 5, 16), state)
+    assert not projected
+    assert torch.equal(state.conv, before.conv)
+    assert torch.equal(state.ssm, before.ssm)
+
+
+def test_state_device_mismatch_is_rejected_before_using_or_mutating_memory():
+    mixer = tiny_mixer()
+    state = mixer.init_state(1, "cpu", torch.float32)
+    state.conv.normal_()
+    before_conv = state.conv.clone()
+    # A meta tensor has shape/dtype but no values; use it to exercise a second device on CPU CI.
+    state.ssm = torch.empty_like(state.ssm, device="meta")
+    wrong_device_tensor = state.ssm
+    with pytest.raises(ValueError, match="state device"):
+        mixer(torch.randn(1, 5, 16), state)
+    assert torch.equal(state.conv, before_conv)
+    assert state.ssm is wrong_device_tensor
+
+
+@pytest.mark.parametrize("input_shape, input_dtype, message", [
+    ((1, 16), torch.float32, "shape"),
+    ((0, 5, 16), torch.float32, "positive"),
+    ((1, 0, 16), torch.float32, "positive"),
+    ((1, 5, 15), torch.float32, "d_model"),
+    ((1, 5, 16), torch.int64, "floating dtype"),
+    ((1, 5, 16), torch.float64, "dtype must match"),
+])
+def test_invalid_input_cannot_change_retained_memory(input_shape, input_dtype, message):
+    mixer = tiny_mixer()
+    state = mixer.init_state(1, "cpu", torch.float32)
+    state.conv.normal_()
+    state.ssm.normal_()
+    before = state.clone()
+    with pytest.raises(ValueError, match=message):
+        mixer(torch.zeros(input_shape, dtype=input_dtype), state)
+    assert torch.equal(state.conv, before.conv)
+    assert torch.equal(state.ssm, before.ssm)
+
+
+def test_input_device_mismatch_cannot_change_retained_memory():
+    mixer = tiny_mixer()
+    state = mixer.init_state(1, "cpu", torch.float32)
+    before = state.clone()
+    with pytest.raises(ValueError, match="input device"):
+        mixer(torch.empty(1, 5, 16, device="meta"), state)
+    assert torch.equal(state.conv, before.conv)
+    assert torch.equal(state.ssm, before.ssm)
+
+
+@pytest.mark.parametrize("batch_size", [0, -1, True, 1.5])
+def test_initial_state_requires_positive_integer_batch_size(batch_size):
+    with pytest.raises(ValueError, match="batch size"):
+        tiny_mixer().init_state(batch_size, "cpu", torch.float32)
+
+
+def test_initial_state_rejects_nonfloating_memory_and_invalid_device():
+    mixer = tiny_mixer()
+    with pytest.raises(ValueError, match="dtype"):
+        mixer.init_state(1, "cpu", torch.int64)
+    with pytest.raises(ValueError, match="device"):
+        mixer.init_state(1, "not-a-device", torch.float32)
+
+
+def test_mixer_failure_preserves_both_memories(monkeypatch):
+    mixer = tiny_mixer()
+    state = mixer.init_state(1, "cpu", torch.float32)
+    state.conv.normal_()
+    state.ssm.normal_()
+    before = state.clone()
+
+    def fail_projection(_input):
+        raise RuntimeError("injected output projection failure")
+
+    monkeypatch.setattr(mixer.out_proj, "forward", fail_projection)
+    with torch.no_grad(), pytest.raises(RuntimeError, match="injected output"):
+        mixer(torch.randn(1, 5, 16), state)
+    assert torch.equal(state.conv, before.conv)
+    assert torch.equal(state.ssm, before.ssm)
+
+
+@pytest.mark.parametrize("d_conv", [1, 4])
+@pytest.mark.parametrize("nonzero_memory", [False, True])
+def test_convolution_boundaries_and_final_state_match_chunked_and_tokenwise(d_conv, nonzero_memory):
+    torch.manual_seed(41)
+    mixer = tiny_mixer(d_conv)
+    inputs = torch.randn(2, 17, 16)
+    initial = mixer.init_state(2, "cpu", torch.float32)
+    if nonzero_memory:
+        initial.conv.normal_()
+        initial.ssm.normal_()
+    one_shot_state, chunked_state, token_state = (initial.clone() for _ in range(3))
+    with torch.no_grad():
+        one_shot = mixer(inputs, one_shot_state, chunk_size=3)
+        chunks = []
+        start = 0
+        for size in (1, 3, 8, 5):
+            chunks.append(mixer(inputs[:, start:start + size], chunked_state, chunk_size=2))
+            start += size
+        tokenwise = torch.cat([
+            mixer(inputs[:, index:index + 1], token_state)
+            for index in range(inputs.shape[1])
+        ], dim=1)
+        if not nonzero_memory:
+            torch.testing.assert_close(mixer(inputs), one_shot, atol=3e-4, rtol=3e-4)
+    torch.testing.assert_close(torch.cat(chunks, dim=1), one_shot, atol=3e-4, rtol=3e-4)
+    torch.testing.assert_close(tokenwise, one_shot, atol=3e-4, rtol=3e-4)
+    for state in (chunked_state, token_state):
+        # Different projection batch shapes can round their GEMMs slightly differently.
+        torch.testing.assert_close(state.conv, one_shot_state.conv, atol=1e-6, rtol=1e-5)
+        torch.testing.assert_close(state.ssm, one_shot_state.ssm, atol=2e-5, rtol=2e-5)
+
+
+@pytest.mark.parametrize("ratio", ["1:0", "0:1"])
+def test_pure_control_models_preserve_stateful_parity(ratio):
+    torch.manual_seed(43)
+    model = HybridLM(tiny_config(ratio=ratio, n_layers=2)).eval()
+    tokens = torch.randint(0, 256, (1, 7))
+    with torch.no_grad():
+        parallel, _ = model(tokens)
+        cached, state = model.prefill(tokens)
+    torch.testing.assert_close(cached, parallel[:, -1:], atol=3e-4, rtol=3e-4)
+    assert state.position == tokens.shape[1]
+
+
+def test_mixer_rejects_grouped_bc_if_a_config_is_mutated_after_validation():
+    cfg = tiny_config()
+    cfg.n_groups = 2
+    with pytest.raises(ValueError, match="grouped Mamba"):
+        Mamba2Mixer(cfg)
+
+
+def test_mixer_rejects_non_mamba_state_and_non_tensor_memories():
+    mixer = tiny_mixer()
+    inputs = torch.randn(1, 3, 16)
+    with pytest.raises(ValueError, match="Mamba2State"):
+        mixer(inputs, AttentionCache())
+    with pytest.raises(ValueError, match="tensors"):
+        mixer(inputs, Mamba2State(conv=None, ssm=None))

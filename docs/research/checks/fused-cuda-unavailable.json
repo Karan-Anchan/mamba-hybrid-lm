@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "status": "unavailable",
+  "backend": "fused_mamba",
+  "reason": "fused_mamba requires the supported Linux/CUDA environment; this system is Windows. Use reference or torch_chunked explicitly.",
+  "device": "cuda",
+  "dtype": "float32",
+  "timestamp_utc": "2026-10-03T16:12:50.613184+00:00",
+  "observed_paths": null,
+  "certified": false
+}

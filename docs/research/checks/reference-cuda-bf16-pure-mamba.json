@@ -1,0 +1,686 @@
+{
+  "schema": 1,
+  "scope": "tiny-model same-weight parity; no research training",
+  "status": "failed",
+  "timestamp_utc": "2026-10-03T16:20:53.900935+00:00",
+  "seed": 1337,
+  "model_config": {
+    "name": "unnamed",
+    "ratio": "0:1",
+    "vocab_size": 128,
+    "d_model": 64,
+    "n_layers": 4,
+    "tie_embeddings": true,
+    "head_dim": 16,
+    "attn_bias": false,
+    "expand": 2,
+    "d_state": 16,
+    "mamba_headdim": 16,
+    "d_conv": 4,
+    "n_groups": 1,
+    "mlp_ratio": 2.6666666666666665,
+    "mlp_multiple_of": 16,
+    "mlp_bias": false,
+    "mlp_on_every_layer": true,
+    "layer_types": [
+      "mamba",
+      "mamba",
+      "mamba",
+      "mamba"
+    ]
+  },
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "tolerances": {
+    "atol": 0.002,
+    "rtol": 0.02
+  },
+  "backend": {
+    "requested": "reference",
+    "resolved": "reference",
+    "chunk_size": 16,
+    "paths": {
+      "training": "torch.quadratic_ssd",
+      "prefill": "torch.chunked_ssd",
+      "decode": "torch.chunked_ssd"
+    },
+    "fused": false,
+    "certification": "requires a recorded numerical and gradient parity run",
+    "mamba_layers": 4
+  },
+  "observed_paths": {
+    "training": "torch.quadratic_ssd",
+    "prefill": "torch.chunked_ssd",
+    "decode": "torch.chunked_ssd"
+  },
+  "reference_backend": {
+    "requested": "reference",
+    "resolved": "reference",
+    "chunk_size": 16,
+    "paths": {
+      "training": "torch.quadratic_ssd",
+      "prefill": "torch.chunked_ssd",
+      "decode": "torch.chunked_ssd"
+    },
+    "fused": false,
+    "certification": "requires a recorded numerical and gradient parity run",
+    "mamba_layers": 4
+  },
+  "source_sha256": {
+    "attention.py": "d45804c3ba668ee66a817406cb4596abd1f61ff5cbbbd944e44e145330cd84ba",
+    "block.py": "eaeae5a11c910499a075ca083294ab661911aa16b2ca54b887d1c14588c17851",
+    "config.py": "caeb8ceb9cbaaab84a1abd31588e6aa34a7bfd3f3859ac3394e6fde54b361019",
+    "inference.py": "b561e97aac89c706bce3a79d561b7cb77fd6237d6336db8300ac575dfd09dd74",
+    "lm.py": "2e93a006b9bfce06afa200d9dd9326fe882336ec1687d54d12381031b2be58c8",
+    "mamba2.py": "69d661f50e31586c361e8ee64c794a836da461d2f870fb455c19b4b2d39f00fe",
+    "mlp.py": "6f58c27eb8fe6facb2f1a99bc56485a7f4199d58e272c59394bb05e0e0825f2e",
+    "norm.py": "dff7295a2219873072c5f3f31fc8c648241afc541ba4b2ed0fa1581d35649521",
+    "scan_backend.py": "b546506ccf5fb1b34b2cfe603829f439c0c90e230ccbed92101aa61c1e2abe3f",
+    "scripts/check_scan_backend.py": "3a32d5435012ed377cddae077a8fff7035499f2954923c09dce59ea6bea1883b"
+  },
+  "python": "3.11.9",
+  "optional_packages": {
+    "mamba-ssm": null,
+    "triton": null,
+    "causal-conv1d": null
+  },
+  "precision_flags": {
+    "float32_matmul_precision": "highest",
+    "cuda_matmul_allow_tf32": false,
+    "cudnn_allow_tf32": true,
+    "deterministic_algorithms": false
+  },
+  "torch": "2.11.0+cu128",
+  "torch_cuda_runtime": "12.8",
+  "gpu": "NVIDIA GeForce RTX 5070",
+  "cases": [
+    {
+      "length": 1,
+      "logits": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "loss": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "gradient_tensors": 54,
+      "worst_gradient": {
+        "parameter": "embed.weight",
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "all_gradients_passed": true,
+      "prefill_logits": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "decode_logits": null,
+      "retained_state": [
+        {
+          "layer": 0,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 0,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 1,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 1,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 2,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 2,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 3,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 3,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        }
+      ],
+      "final_position": 1,
+      "passed": true
+    },
+    {
+      "length": 15,
+      "logits": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "loss": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "gradient_tensors": 54,
+      "worst_gradient": {
+        "parameter": "embed.weight",
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "all_gradients_passed": true,
+      "prefill_logits": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "decode_logits": {
+        "passed": true,
+        "tokenwise_positions": [
+          {
+            "finite": true,
+            "passed": true,
+            "max_absolute_error": 0.00390625,
+            "max_tolerance_ratio": 0.5858067274093628
+          },
+          {
+            "finite": true,
+            "passed": true,
+            "max_absolute_error": 0.001953125,
+            "max_tolerance_ratio": 0.6379876136779785
+          },
+          {
+            "finite": true,
+            "passed": true,
+            "max_absolute_error": 0.00390625,
+            "max_tolerance_ratio": 0.6333287954330444
+          }
+        ]
+      },
+      "retained_state": [
+        {
+          "layer": 0,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 0,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 1,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 1,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 2,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 2,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 3,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 3,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        }
+      ],
+      "final_position": 15,
+      "passed": true
+    },
+    {
+      "length": 16,
+      "logits": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "loss": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "gradient_tensors": 54,
+      "worst_gradient": {
+        "parameter": "embed.weight",
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "all_gradients_passed": true,
+      "prefill_logits": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "decode_logits": {
+        "passed": true,
+        "tokenwise_positions": [
+          {
+            "finite": true,
+            "passed": true,
+            "max_absolute_error": 0.001953125,
+            "max_tolerance_ratio": 0.5702337622642517
+          },
+          {
+            "finite": true,
+            "passed": true,
+            "max_absolute_error": 0.001953125,
+            "max_tolerance_ratio": 0.7728828191757202
+          },
+          {
+            "finite": true,
+            "passed": true,
+            "max_absolute_error": 0.002197265625,
+            "max_tolerance_ratio": 0.8232710957527161
+          }
+        ]
+      },
+      "retained_state": [
+        {
+          "layer": 0,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 0,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 1,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 1,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 2,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 2,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 3,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 3,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        }
+      ],
+      "final_position": 16,
+      "passed": true
+    },
+    {
+      "length": 17,
+      "logits": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "loss": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "gradient_tensors": 54,
+      "worst_gradient": {
+        "parameter": "embed.weight",
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "all_gradients_passed": true,
+      "prefill_logits": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "decode_logits": {
+        "passed": false,
+        "tokenwise_positions": [
+          {
+            "finite": true,
+            "passed": true,
+            "max_absolute_error": 0.00390625,
+            "max_tolerance_ratio": 0.7878537178039551
+          },
+          {
+            "finite": true,
+            "passed": true,
+            "max_absolute_error": 0.001953125,
+            "max_tolerance_ratio": 0.6037026643753052
+          },
+          {
+            "finite": true,
+            "passed": false,
+            "max_absolute_error": 0.00390625,
+            "max_tolerance_ratio": 1.1991826295852661
+          }
+        ]
+      },
+      "retained_state": [
+        {
+          "layer": 0,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 0,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 1,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 1,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 2,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 2,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 3,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 3,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        }
+      ],
+      "final_position": 17,
+      "passed": false
+    },
+    {
+      "length": 33,
+      "logits": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "loss": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "gradient_tensors": 54,
+      "worst_gradient": {
+        "parameter": "embed.weight",
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 0.0,
+        "max_tolerance_ratio": 0.0
+      },
+      "all_gradients_passed": true,
+      "prefill_logits": {
+        "finite": true,
+        "passed": false,
+        "max_absolute_error": 0.0032958984375,
+        "max_tolerance_ratio": 1.2614463567733765
+      },
+      "decode_logits": {
+        "passed": true,
+        "tokenwise_positions": [
+          {
+            "finite": true,
+            "passed": true,
+            "max_absolute_error": 0.001953125,
+            "max_tolerance_ratio": 0.850013256072998
+          },
+          {
+            "finite": true,
+            "passed": true,
+            "max_absolute_error": 0.001953125,
+            "max_tolerance_ratio": 0.5413342118263245
+          },
+          {
+            "finite": true,
+            "passed": true,
+            "max_absolute_error": 0.0029296875,
+            "max_tolerance_ratio": 0.7439141273498535
+          }
+        ]
+      },
+      "retained_state": [
+        {
+          "layer": 0,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 0,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 1,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 1,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 2,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 2,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 3,
+          "field": "conv",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        },
+        {
+          "layer": 3,
+          "field": "ssm",
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 0.0,
+          "max_tolerance_ratio": 0.0
+        }
+      ],
+      "final_position": 33,
+      "passed": false
+    }
+  ],
+  "limits": [
+    "Small random model and listed lengths only.",
+    "Not a speed benchmark, checkpoint certification, or quality comparison.",
+    "A portable backend pass does not certify fused_mamba."
+  ]
+}

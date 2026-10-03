@@ -1,10 +1,10 @@
-"""Mamba-2 mixer, written in plain PyTorch (no mamba-ssm kernel — see D-ARCH-03 / E-0002).
+"""Mamba-2 mixer with explicit, checkpoint-compatible scan engines.
 
 I use the SSD "dual" form: because a selective SSM with a scalar decay per head is equivalent to a
 masked attention, I can compute the whole thing as an L x L matrix instead of looping over time. It's
-O(L^2) like attention (fine at our lengths, and attention layers pay the same), and it's fully
-parallel so the GPU is happy. A chunked O(L) version is the obvious later optimization if throughput
-ever bites.
+O(L^2) like attention. This remains the historical default training engine. A bounded
+PyTorch scan and an optional official fused scan can be selected at runtime and must
+pass parity checks before performance comparisons. Stateful inference is bounded.
 
 Shapes I keep in my head:
     x   (B, L, H, P)   H mamba heads, P = headdim
@@ -22,10 +22,15 @@ from torch import nn
 from src.model.config import ModelConfig
 from src.model.inference import Mamba2State
 from src.model.norm import RMSNorm
+from src.model.scan_backend import resolve_scan_backend
 
 
 def ssd(x, dt, A, B, C, D):
-    """The scan, done as a masked-attention matmul. Runs in float32 for stability."""
+    """Masked-attention scan with float32 inputs; autocast can lower matmul precision.
+
+    Keep this historical execution unchanged. Recurrent memory is float32, but
+    float32 inputs alone do not disable autocast for the einsum contractions.
+    """
     b, l, h, p = x.shape
     x, dt, B, C = x.float(), dt.float(), B.float(), C.float()
     A = A.float()
@@ -79,6 +84,8 @@ def ssd_stateful(x, dt, A, B, C, D, initial_state):
 class Mamba2Mixer(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
+        if cfg.n_groups != 1:
+            raise ValueError("n_groups must be 1; grouped Mamba B/C are not implemented")
         self.d_inner = cfg.d_inner
         self.nheads = cfg.n_mamba_heads
         self.headdim = cfg.mamba_headdim
@@ -97,12 +104,21 @@ class Mamba2Mixer(nn.Module):
         self.D = nn.Parameter(torch.ones(self.nheads))
         self.norm = RMSNorm(self.d_inner)   # gated: normalizes y * silu(z)
         self.out_proj = nn.Linear(self.d_inner, cfg.d_model, bias=False)
+        self.scan_backend = resolve_scan_backend("reference")
 
         self._reset_ssm_params()
 
     def init_state(
         self, batch_size: int, device: torch.device | str, dtype: torch.dtype
     ) -> Mamba2State:
+        if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size <= 0:
+            raise ValueError("Mamba inference batch size must be a positive integer")
+        if dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+            raise ValueError("Mamba convolution state dtype must be a supported floating dtype")
+        try:
+            device = torch.device(device)
+        except (TypeError, RuntimeError) as exc:
+            raise ValueError("Mamba inference-state device must be a valid torch device") from exc
         conv_tail = self.conv1d.kernel_size[0] - 1
         return Mamba2State(
             conv=torch.zeros(batch_size, self.conv_dim, conv_tail, device=device, dtype=dtype),
@@ -116,6 +132,48 @@ class Mamba2Mixer(nn.Module):
             ),
         )
 
+    def _validate_forward(
+        self, u: torch.Tensor, state: Mamba2State | None, chunk_size: int
+    ) -> None:
+        """Check the request before touching memory retained from earlier tokens."""
+        if not isinstance(u, torch.Tensor) or u.ndim != 3:
+            raise ValueError("Mamba input must have shape (batch, tokens, d_model)")
+        if u.shape[0] <= 0 or u.shape[1] <= 0 or u.shape[2] != self.in_proj.in_features:
+            raise ValueError("Mamba input needs positive batch/tokens and the configured d_model")
+        if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
+            raise ValueError("Mamba inference chunk size must be a positive integer")
+        supported_dtypes = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+        if u.dtype not in supported_dtypes:
+            raise ValueError("Mamba input must use a supported floating dtype")
+        weight = self.in_proj.weight
+        if u.device != weight.device:
+            raise ValueError("Mamba input device must match the mixer device")
+        autocast = torch.is_autocast_enabled(u.device.type)
+        # Autocast changes the projection dtype, but does not convert float64 operands.
+        autocast_projection = autocast and torch.float64 not in (u.dtype, weight.dtype)
+        if u.dtype != weight.dtype and not autocast_projection:
+            raise ValueError("Mamba input dtype must match mixer weights outside autocast")
+        projected_dtype = torch.get_autocast_dtype(u.device.type) if autocast_projection else weight.dtype
+        if state is None:
+            return
+        if not isinstance(state, Mamba2State):
+            raise ValueError("Mamba inference state must be a Mamba2State")
+        if not isinstance(state.conv, torch.Tensor) or not isinstance(state.ssm, torch.Tensor):
+            raise ValueError("Mamba inference state must contain convolution and SSM tensors")
+        expected_conv = (u.shape[0], self.conv_dim, self.conv1d.kernel_size[0] - 1)
+        expected_ssm = (u.shape[0], self.nheads, self.headdim, self.d_state)
+        if state.conv.shape != expected_conv or state.ssm.shape != expected_ssm:
+            raise ValueError("Mamba inference-state shape does not match this input and mixer")
+        if state.conv.device != u.device or state.ssm.device != u.device:
+            raise ValueError("Mamba inference-state device must match the input device")
+        if state.conv.dtype != projected_dtype:
+            raise ValueError(
+                f"Mamba convolution state uses {state.conv.dtype}, projected input uses "
+                f"{projected_dtype}"
+            )
+        if state.ssm.dtype != torch.float32:
+            raise ValueError("Mamba SSM state must use torch.float32 for recurrent accumulation")
+
     def _reset_ssm_params(self):
         # A in [1, 16] like the paper, stored as log; dt_bias set so softplus(dt) starts small
         with torch.no_grad():
@@ -124,8 +182,12 @@ class Mamba2Mixer(nn.Module):
             self.dt_bias.copy_(dt + torch.log(-torch.expm1(-dt)))  # inverse softplus
 
     def forward(
-        self, u: torch.Tensor, state: Mamba2State | None = None, chunk_size: int = 128
+        self, u: torch.Tensor, state: Mamba2State | None = None, chunk_size: int | None = None
     ) -> torch.Tensor:
+        chunk_size = self.scan_backend.chunk_size if chunk_size is None else chunk_size
+        self._validate_forward(u, state, chunk_size)
+        if self.scan_backend.name == "fused_mamba" and chunk_size != self.scan_backend.chunk_size:
+            raise ValueError("fused chunk size is fixed by configure_scan_backend; per-call overrides are unsupported")
         batch, L, _ = u.shape
         z, xBC, dt = self.in_proj(u).split(
             [self.d_inner, self.conv_dim, self.nheads], dim=-1)
@@ -133,11 +195,8 @@ class Mamba2Mixer(nn.Module):
         if state is None:
             xBC = self.conv1d(xBC.transpose(1, 2))[..., :L].transpose(1, 2)
         else:
-            expected_conv = (batch, self.conv_dim, self.conv1d.kernel_size[0] - 1)
-            expected_ssm = (batch, self.nheads, self.headdim, self.d_state)
-            if state.conv.shape != expected_conv or state.ssm.shape != expected_ssm:
-                raise ValueError("Mamba inference-state shape does not match this input and mixer")
             projected = xBC.transpose(1, 2)
+            # Check the actual result too, in case a caller installs a custom projection.
             if projected.dtype != state.conv.dtype:
                 raise ValueError(
                     f"Mamba convolution state uses {state.conv.dtype}, projected input uses "
@@ -151,8 +210,6 @@ class Mamba2Mixer(nn.Module):
                 groups=self.conv_dim,
             ).transpose(1, 2)
             tail = state.conv.shape[2]
-            if tail:
-                state.conv.copy_(combined[..., -tail:])
 
         xBC = F.silu(xBC)
         x, Bm, Cm = xBC.split([self.d_inner, self.ngroups * self.d_state,
@@ -164,28 +221,18 @@ class Mamba2Mixer(nn.Module):
         A = -torch.exp(self.A_log)
         dt = F.softplus(dt + self.dt_bias)
 
-        if state is None:
-            y = ssd(x, dt, A, Bm, Cm, self.D)
-        else:
-            if chunk_size <= 0:
-                raise ValueError("Mamba inference chunk size must be positive")
-            outputs = []
-            carried = state.ssm
-            for start in range(0, L, chunk_size):
-                stop = min(start + chunk_size, L)
-                chunk_y, carried = ssd_stateful(
-                    x[:, start:stop],
-                    dt[:, start:stop],
-                    A,
-                    Bm[:, start:stop],
-                    Cm[:, start:stop],
-                    self.D,
-                    carried,
-                )
-                outputs.append(chunk_y)
-            state.ssm.copy_(carried)
-            y = torch.cat(outputs, dim=1)
+        y, carried = self.scan_backend.scan(
+            x, dt, A, Bm, Cm, self.D, None if state is None else state.ssm,
+            reference_scan=ssd, stateful_scan=ssd_stateful,
+            inference_chunk_size=chunk_size,
+        )
 
         y = y.reshape(batch, L, self.d_inner)
         y = self.norm(y * F.silu(z))       # z gates, then normalize
-        return self.out_proj(y.to(u.dtype))
+        result = self.out_proj(y.to(u.dtype))
+        if state is not None:
+            # Commit both memories only after this mixer has produced its output successfully.
+            if tail:
+                state.conv.copy_(combined[..., -tail:])
+            state.ssm.copy_(carried)
+        return result

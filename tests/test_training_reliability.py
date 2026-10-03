@@ -1,5 +1,6 @@
 """Fast checks for run isolation, deterministic sampling, and recoverable training artifacts."""
 
+import copy
 import json
 import os
 from dataclasses import replace
@@ -17,6 +18,7 @@ from scripts.run_sweep import (
     warmup_steps_for_fraction,
 )
 from src.data.dataset import get_batch
+from src.model.scan_backend import BackendUnavailableError, ScanBackend
 from src.train.train import (
     MetricsWriter,
     RunLock,
@@ -371,3 +373,262 @@ def test_authoritative_token_budget_arithmetic():
     assert tokens_for_steps(42_725, 8, 4, 512) == 700_006_400
     assert warmup_steps_for_fraction(42_725, 0.02) == 855
     assert steps_for_tokens(800_000_000, 8, 4, 512) == 48_829
+
+
+@pytest.mark.parametrize("stage, invalid", [
+    ("loss", float("nan")), ("loss", float("inf")),
+    ("gradient", float("nan")), ("gradient", float("inf")),
+    ("accumulated", 3e38),
+])
+def test_nonfinite_update_preserves_weights_optimizer_and_durable_progress(tmp_path, monkeypatch, stage, invalid):
+    cfg = replace(_tiny_train_config(tmp_path), grad_accum=2)
+    real_model = train_module.HybridLM
+    real_optimizer = train_module.torch.optim.AdamW
+    captured = {}
+    training_microbatches = 0
+    update_calls = 0
+    invalid_loss_backwards = []
+
+    def make_model(*args, **kwargs):
+        model = real_model(*args, **kwargs)
+        captured["model"] = model
+        real_forward = model.forward
+
+        def forward(x, targets):
+            nonlocal training_microbatches
+            logits, loss = real_forward(x, targets)
+            if model.training:
+                training_microbatches += 1
+                if stage == "accumulated" and training_microbatches >= 3:
+                    loss = loss * 0 + invalid  # finite microbatch losses, overflowing float32 sum
+                if training_microbatches == 4:  # second microbatch of the second optimizer step
+                    run_dir = variant_run_dir(cfg, "tiny-1:3")
+                    captured["last_bytes"] = (run_dir / "last.pt").read_bytes()
+                    captured["best_bytes"] = (run_dir / "best.pt").read_bytes()
+                    captured["metrics_bytes"] = (run_dir / "metrics.jsonl").read_bytes()
+                    captured["optimizer_before_failure"] = copy.deepcopy(captured["optimizer"].state_dict())
+                    if stage == "loss":
+                        loss = loss * invalid
+                        loss.register_hook(lambda gradient: invalid_loss_backwards.append(gradient))
+                    elif stage == "gradient":
+                        loss.register_hook(lambda gradient: torch.full_like(gradient, invalid))
+            return logits, loss
+
+        model.forward = forward
+        return model
+
+    def make_optimizer(*args, **kwargs):
+        optimizer = real_optimizer(*args, **kwargs)
+        captured["optimizer"] = optimizer
+        real_step = optimizer.step
+
+        def step(*step_args, **step_kwargs):
+            nonlocal update_calls
+            update_calls += 1
+            return real_step(*step_args, **step_kwargs)
+
+        optimizer.step = step
+        return optimizer
+
+    monkeypatch.setattr(train_module, "HybridLM", make_model)
+    monkeypatch.setattr(train_module.torch.optim, "AdamW", make_optimizer)
+    expected = "accumulated training loss" if stage == "accumulated" else f"training {stage}"
+    with pytest.raises(FloatingPointError, match=rf"non-finite {expected}.*step 2.*microbatch 2/2"):
+        run(cfg)
+
+    run_dir = variant_run_dir(cfg, "tiny-1:3")
+    last = torch.load(run_dir / "last.pt", map_location="cpu", weights_only=True)
+    assert update_calls == 1
+    assert training_microbatches == 4
+    assert invalid_loss_backwards == []  # a rejected loss never enters backward
+    assert last["completed_steps"] == 1
+    assert last["tokens_seen"] == 8
+    assert (run_dir / "last.pt").read_bytes() == captured["last_bytes"]
+    assert (run_dir / "best.pt").read_bytes() == captured["best_bytes"]
+    assert (run_dir / "metrics.jsonl").read_bytes() == captured["metrics_bytes"]
+    assert not (run_dir / "result.json").exists()
+    assert json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))["status"] != "completed"
+    _assert_nested_equal(last["model"], captured["model"].state_dict())
+    _assert_nested_equal(last["optimizer"], captured["optimizer"].state_dict())
+    _assert_nested_equal(captured["optimizer_before_failure"], captured["optimizer"].state_dict())
+    assert all(parameter.grad is None for parameter in captured["model"].parameters())
+
+    # The valid checkpoint remains usable; the failed in-memory update cannot contaminate resume.
+    monkeypatch.setattr(train_module, "HybridLM", real_model)
+    monkeypatch.setattr(train_module.torch.optim, "AdamW", real_optimizer)
+    assert run(cfg)["completed_steps"] == 2
+
+
+def test_explicit_seed_streams_separate_initialization_training_and_evaluation(tmp_path, monkeypatch):
+    cfg = replace(_tiny_train_config(tmp_path), max_steps=1, model_seed=11, data_seed=22, eval_seed=33)
+    real_batch = train_module.get_batch
+    observed = []
+
+    def record_batch(*args, **kwargs):
+        x, y = real_batch(*args, **kwargs)
+        observed.append((kwargs["generator"].initial_seed(), x.clone()))
+        return x, y
+
+    monkeypatch.setattr(train_module, "get_batch", record_batch)
+    outcomes = {}
+    for label, overrides in (
+        ("first", {}), ("new-model", {"model_seed": 44}),
+        ("new-data", {"data_seed": 55}), ("new-eval", {"eval_seed": 66}),
+    ):
+        observed.clear()
+        current = replace(cfg, run_id=label, **overrides)
+        run(current)
+        run_dir = variant_run_dir(current, "tiny-1:3")
+        outcomes[label] = {
+            "model": torch.load(run_dir / "last.pt", map_location="cpu", weights_only=True)["model"],
+            "train": [x for seed, x in observed if seed == current.data_seed],
+            "eval": [x for seed, x in observed if seed in (current.eval_seed + 1, current.eval_seed + 2)],
+        }
+
+    assert torch.equal(outcomes["first"]["train"][0], outcomes["new-model"]["train"][0])
+    assert all(torch.equal(a, b) for a, b in zip(outcomes["first"]["eval"], outcomes["new-model"]["eval"]))
+    assert any(not torch.equal(outcomes["first"]["model"][name], outcomes["new-model"]["model"][name])
+               for name in outcomes["first"]["model"])
+    assert not torch.equal(outcomes["first"]["train"][0], outcomes["new-data"]["train"][0])
+    assert all(torch.equal(a, b) for a, b in zip(outcomes["first"]["eval"], outcomes["new-data"]["eval"]))
+    assert torch.equal(outcomes["first"]["train"][0], outcomes["new-eval"]["train"][0])
+    assert any(not torch.equal(a, b) for a, b in zip(outcomes["first"]["eval"], outcomes["new-eval"]["eval"]))
+
+
+@pytest.mark.parametrize("field", ["seed", "model_seed", "data_seed", "eval_seed"])
+@pytest.mark.parametrize("invalid", [-1, 2**32, 1.5, True])
+def test_seed_streams_reject_invalid_values_before_creating_artifacts(tmp_path, field, invalid):
+    cfg = TrainConfig(ckpt_dir=str(tmp_path / "checkpoints"), **{field: invalid})
+    with pytest.raises(ValueError, match=rf"{field} must be an integer"):
+        run(cfg)
+    assert not (tmp_path / "checkpoints").exists()
+
+
+def test_unspecified_seed_streams_match_the_explicit_legacy_policy(tmp_path):
+    cfg = replace(_tiny_train_config(tmp_path), max_steps=1, run_id="default-streams")
+    explicit_cfg = replace(
+        cfg, run_id="explicit-streams", model_seed=cfg.seed, data_seed=cfg.seed, eval_seed=cfg.seed,
+    )
+    run(cfg)
+    run(explicit_cfg)
+    checkpoints = [torch.load(
+        variant_run_dir(current, "tiny-1:3") / "last.pt", map_location="cpu", weights_only=True,
+    ) for current in (cfg, explicit_cfg)]
+    for key in ("model", "optimizer", "rng"):
+        _assert_nested_equal(checkpoints[0][key], checkpoints[1][key])
+
+
+def test_optional_seed_cli_arguments_are_integers(monkeypatch):
+    captured = []
+    monkeypatch.setattr(train_module, "run", lambda cfg: captured.append(cfg))
+    monkeypatch.setattr(train_module.sys, "argv", [
+        "train", "--model-seed", "0", "--data-seed", "17", "--eval-seed", "23",
+    ])
+    train_module.main()
+    assert (captured[0].model_seed, captured[0].data_seed, captured[0].eval_seed) == (0, 17, 23)
+
+
+def test_base_seed_cannot_be_unspecified(tmp_path):
+    with pytest.raises(ValueError, match="seed must be an integer"):
+        run(TrainConfig(seed=None, ckpt_dir=str(tmp_path / "checkpoints")))
+    assert not (tmp_path / "checkpoints").exists()
+
+
+@pytest.mark.parametrize("backend, expected_path", [
+    ("reference", "torch.quadratic_ssd"), ("torch_chunked", "torch.chunked_ssd"),
+])
+def test_training_records_requested_resolved_and_executed_scan_paths(tmp_path, monkeypatch, backend, expected_path):
+    cfg = replace(_tiny_train_config(tmp_path), max_steps=1, scan_backend=backend, scan_chunk_size=3)
+    calls = []
+    real_scan = ScanBackend.scan
+
+    def record_scan(self, *args, **kwargs):
+        calls.append((self.name, torch.is_grad_enabled()))
+        return real_scan(self, *args, **kwargs)
+
+    monkeypatch.setattr(ScanBackend, "scan", record_scan)
+    result = run(cfg)
+    run_dir = variant_run_dir(cfg, "tiny-1:3")
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert (backend, True) in calls  # the selected engine actually participated in a training graph
+    assert result["scan_backend"]["requested"] == backend
+    assert result["scan_backend"]["resolved"] == backend
+    assert result["scan_backend"]["fused"] is False
+    assert result["scan_backend"]["chunk_size"] == 3
+    assert result["observed_paths"] == {"training": expected_path, "prefill": None, "decode": None}
+    assert manifest["scan_backend"] == result["scan_backend"]
+    assert manifest["observed_paths"] == result["observed_paths"]
+    checkpoint = torch.load(run_dir / "last.pt", map_location="cpu", weights_only=True)
+    assert "scan_backend" not in checkpoint["model_config"]
+    assert all("scan_backend" not in name for name in checkpoint["model"])
+    assert run(cfg) == result
+
+
+@pytest.mark.parametrize("overrides, message", [
+    ({"scan_backend": "pretend_cuda"}, "unknown scan backend"),
+    ({"scan_chunk_size": 0}, "positive integer"),
+    ({"scan_chunk_size": -1}, "positive integer"),
+    ({"scan_chunk_size": 2.5}, "positive integer"),
+    ({"scan_chunk_size": True}, "positive integer"),
+])
+def test_invalid_scan_selection_fails_before_creating_a_run(tmp_path, overrides, message):
+    cfg = TrainConfig(ckpt_dir=str(tmp_path / "checkpoints"), **overrides)
+    with pytest.raises(ValueError, match=message):
+        run(cfg)
+    assert not (tmp_path / "checkpoints").exists()
+
+
+def test_unavailable_fused_selection_fails_without_fallback_or_run_artifacts(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.model.scan_backend.platform.system", lambda: "Windows")
+    cfg = TrainConfig(ckpt_dir=str(tmp_path / "checkpoints"), scan_backend="fused_mamba")
+    with pytest.raises(BackendUnavailableError, match="Linux/CUDA environment"):
+        run(cfg)
+    assert not (tmp_path / "checkpoints").exists()
+
+
+def test_result_before_manifest_finalization_can_recover_scan_execution_metadata(tmp_path, monkeypatch):
+    cfg = replace(_tiny_train_config(tmp_path), max_steps=1)
+    real_write = train_module.atomic_write_json
+
+    def interrupt_manifest_finalization(path, value):
+        if path.name == "manifest.json" and value.get("status") == "completed":
+            raise RuntimeError("simulated finalization interruption")
+        return real_write(path, value)
+
+    monkeypatch.setattr(train_module, "atomic_write_json", interrupt_manifest_finalization)
+    with pytest.raises(RuntimeError, match="finalization interruption"):
+        run(cfg)
+    run_dir = variant_run_dir(cfg, "tiny-1:3")
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["status"] == "running"
+    assert manifest["observed_paths"]["training"] is None
+    assert (run_dir / "result.json").is_file()
+
+    monkeypatch.setattr(train_module, "atomic_write_json", real_write)
+    result = run(cfg)
+    recovered = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert recovered["status"] == "completed"
+    assert recovered["observed_paths"] == result["observed_paths"]
+
+
+def test_all_attention_training_never_claims_an_executed_scan(tmp_path, monkeypatch):
+    cfg = replace(_tiny_train_config(tmp_path), max_steps=1, scan_backend="torch_chunked")
+    config_path = Path(cfg.model_config)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        .replace('name: "tiny-1:3"', 'name: "tiny-attention"')
+        .replace('ratio: "1:3"', 'ratio: "1:0"'),
+        encoding="utf-8",
+    )
+
+    def no_scan(*_args, **_kwargs):
+        raise AssertionError("an all-attention model cannot execute a Mamba scan")
+
+    monkeypatch.setattr(ScanBackend, "scan", no_scan)
+    result = run(cfg)
+    manifest = json.loads((variant_run_dir(cfg, "tiny-attention") / "manifest.json").read_text(encoding="utf-8"))
+    assert result["n_mamba"] == 0
+    assert result["scan_backend"]["mamba_layers"] == 0
+    assert result["observed_paths"] == {"training": None, "prefill": None, "decode": None}
+    assert manifest["observed_paths"] == result["observed_paths"]
+    assert run(cfg) == result

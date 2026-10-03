@@ -310,13 +310,23 @@ demo/      Week 5 API deployment files and operator guide
 
 ## Verification
 
-Current repository test result:
+Inspect the environment before planning a new CUDA backend campaign:
 
-```text
-55 passed, 1 skipped
+```powershell
+.\.venv\Scripts\python.exe scripts\research_preflight.py --probe-torch
 ```
 
-The skipped test requires CUDA in the test process. The authoritative runs themselves were executed on an RTX 5070 12 GB with CUDA available.
+This read-only report distinguishes the installed CUDA toolkit, driver compatibility, PyTorch runtime and package metadata. It executes no Mamba kernel and does not certify fused performance. Save a dated report with `--output <path>` when needed. Keep new backend studies in new run namespaces so the completed results remain reproducible.
+
+Research foundations and beginner walkthroughs are recorded in [the implementation record](docs/research/IMPLEMENTATION.md). It includes explicit backend selection, independent-seed dry-run campaigns, reliability checks, and retained numerical failures. Optional fused execution remains unavailable here; the portable CUDA gate is a separate result.
+
+Current repository test result (3 October 2026):
+
+```text
+298 passed, 1 skipped
+```
+
+The skip is the pre-existing file-symlink check because symlinks are unavailable in this Windows test context. CUDA tests ran on the RTX 5070. All three historical checkpoints also passed a short FP32 CUDA compatibility check. This is not a new language-quality evaluation.
 
 ## Roadmap
 

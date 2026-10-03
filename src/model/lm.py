@@ -18,6 +18,7 @@ from src.model.block import HybridBlock
 from src.model.config import ModelConfig
 from src.model.inference import AttentionCache, HybridInferenceState
 from src.model.norm import RMSNorm
+from src.model.scan_backend import resolve_scan_backend
 
 
 class HybridLM(nn.Module):
@@ -49,6 +50,18 @@ class HybridLM(nn.Module):
                 nn.init.zeros_(m.bias)
         elif isinstance(m, nn.Embedding):
             nn.init.normal_(m.weight, mean=0.0, std=0.02)
+
+    def configure_scan_backend(self, name: str, chunk_size: int = 128) -> dict:
+        """Select the scan without adding checkpoint fields or changing weights.
+
+        Resolution happens first: an unavailable fused request leaves every layer
+        on its previous backend. This is an execution choice, not a new architecture.
+        """
+        backend = resolve_scan_backend(name, chunk_size)
+        for block in self.blocks:
+            if not block.is_attn:
+                block.mixer.scan_backend = backend
+        return {**backend.metadata(), "mamba_layers": sum(not b.is_attn for b in self.blocks)}
 
     def init_inference_state(
         self,

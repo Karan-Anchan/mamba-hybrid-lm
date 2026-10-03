@@ -37,9 +37,11 @@ EVALUATION_SOURCE_FILES = (
     "src/eval/suite.py",
     "src/model/attention.py",
     "src/model/block.py",
+    "src/model/config.py",
     "src/model/inference.py",
     "src/model/lm.py",
     "src/model/mamba2.py",
+    "src/model/scan_backend.py",
 )
 
 

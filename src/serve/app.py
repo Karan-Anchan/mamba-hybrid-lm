@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 import json
 import os
 from pathlib import Path
-from typing import AsyncIterator, Protocol
+from typing import AsyncIterator, Callable, Protocol, TypeVar
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +20,7 @@ from src.serve.registry import DemoRuntime, RATIOS, RuntimeSettings
 
 
 ROOT = Path(__file__).resolve().parents[2]
+_WorkerResult = TypeVar("_WorkerResult")
 
 
 class RuntimeProtocol(Protocol):
@@ -87,6 +88,35 @@ def _http_error(error: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail="Generation failed. Check the server log for details.")
 
 
+def _start_generation_worker(
+    application: FastAPI,
+    work: Callable[..., _WorkerResult],
+    *args,
+) -> asyncio.Task[_WorkerResult]:
+    """Give the worker ownership of the model lock, independently of its HTTP client.
+
+    Cancelling ``to_thread`` does not stop its thread. Shielding this task at the request boundary
+    lets a disconnected client leave promptly while the actual worker keeps its lock until it
+    finishes. The lifespan tracks and drains workers before closing the event loop.
+    """
+    async def run_serialized() -> _WorkerResult:
+        async with application.state.generation_lock:
+            return await asyncio.to_thread(work, *args)
+
+    worker = asyncio.create_task(run_serialized())
+    application.state.generation_workers.add(worker)
+
+    def finished(task: asyncio.Task) -> None:
+        application.state.generation_workers.discard(task)
+        # A cancelled client may no longer await a failed worker. Retrieve its exception so the
+        # event loop does not report an unhandled task; active requests still receive the error.
+        if not task.cancelled():
+            task.exception()
+
+    worker.add_done_callback(finished)
+    return worker
+
+
 def create_app(
     runtime: RuntimeProtocol | None = None,
     settings: AppSettings | None = None,
@@ -99,7 +129,15 @@ def create_app(
             DemoRuntime, configured.runtime
         )
         application.state.generation_lock = asyncio.Lock()
-        yield
+        application.state.generation_workers = set()
+        try:
+            yield
+        finally:
+            # Generation already has a finite token limit. Python cannot safely kill a running
+            # thread, so shutdown waits for active work rather than releasing its model early.
+            workers = tuple(application.state.generation_workers)
+            if workers:
+                await asyncio.shield(asyncio.gather(*workers, return_exceptions=True))
 
     application = FastAPI(
         title="Mamba Hybrid LM API",
@@ -126,13 +164,14 @@ def create_app(
     @application.post("/v1/generate")
     async def generate(payload: GenerationRequest, request: Request) -> dict:
         try:
-            async with request.app.state.generation_lock:
-                result = await asyncio.to_thread(
-                    request.app.state.runtime.generate,
-                    payload.prompt,
-                    payload.ratio,
-                    payload.sampling(),
-                )
+            worker = _start_generation_worker(
+                request.app,
+                request.app.state.runtime.generate,
+                payload.prompt,
+                payload.ratio,
+                payload.sampling(),
+            )
+            result = await asyncio.shield(worker)
             return result.to_dict()
         except Exception as error:
             raise _http_error(error) from error
@@ -155,21 +194,20 @@ def create_app(
                 except Exception as error:
                     loop.call_soon_threadsafe(queue.put_nowait, ("error", error))
 
-            async with request.app.state.generation_lock:
-                worker = asyncio.create_task(asyncio.to_thread(run_generation))
-                while True:
-                    kind, value = await queue.get()
-                    if kind == "token":
-                        yield _sse("token", value)
-                    elif kind == "complete":
-                        yield _sse("complete", value)
-                        break
-                    else:
-                        error = value if isinstance(value, Exception) else RuntimeError(str(value))
-                        mapped = _http_error(error)
-                        yield _sse("error", {"status": mapped.status_code, "detail": mapped.detail})
-                        break
-                await worker
+            worker = _start_generation_worker(request.app, run_generation)
+            while True:
+                kind, value = await queue.get()
+                if kind == "token":
+                    yield _sse("token", value)
+                elif kind == "complete":
+                    yield _sse("complete", value)
+                    break
+                else:
+                    error = value if isinstance(value, Exception) else RuntimeError(str(value))
+                    mapped = _http_error(error)
+                    yield _sse("error", {"status": mapped.status_code, "detail": mapped.detail})
+                    break
+            await asyncio.shield(worker)
 
         return StreamingResponse(
             events(),

@@ -1,0 +1,194 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "timestamp_utc": "2026-10-03T16:23:45.489249+00:00",
+  "seed": 1337,
+  "device": "cuda",
+  "dtype": "float32",
+  "length": 17,
+  "tolerances": {
+    "atol": 0.0003,
+    "rtol": 0.0003
+  },
+  "training_run_id": "week3-700m-v1",
+  "torch": "2.11.0+cu128",
+  "source_sha256": {
+    "scripts/run_week4_eval.py": "3d95743a9e64a756de0b5f69f6cdc544325cc54d0799d8589f3c17c99d867690",
+    "src/eval/report.py": "bbf9ffa4323ec05cf5255c97d44933b53576d925d1b9c3fc0dd418098d2294a1",
+    "src/eval/suite.py": "d0b53b1563ebaa98f5247716c806888e68b2342338166a2c9ff1a71dc28db79f",
+    "src/model/attention.py": "d45804c3ba668ee66a817406cb4596abd1f61ff5cbbbd944e44e145330cd84ba",
+    "src/model/block.py": "eaeae5a11c910499a075ca083294ab661911aa16b2ca54b887d1c14588c17851",
+    "src/model/config.py": "caeb8ceb9cbaaab84a1abd31588e6aa34a7bfd3f3859ac3394e6fde54b361019",
+    "src/model/inference.py": "b561e97aac89c706bce3a79d561b7cb77fd6237d6336db8300ac575dfd09dd74",
+    "src/model/lm.py": "2e93a006b9bfce06afa200d9dd9326fe882336ec1687d54d12381031b2be58c8",
+    "src/model/mamba2.py": "69d661f50e31586c361e8ee64c794a836da461d2f870fb455c19b4b2d39f00fe",
+    "src/model/scan_backend.py": "b546506ccf5fb1b34b2cfe603829f439c0c90e230ccbed92101aa61c1e2abe3f",
+    "scripts/check_scan_backend.py": "3a32d5435012ed377cddae077a8fff7035499f2954923c09dce59ea6bea1883b",
+    "scripts/check_checkpoint_compatibility.py": "91946c828584a2ecf3a3011a4d099bb74a1c1ffc0a19ae674406d46c75ccb4eb"
+  },
+  "cases": [
+    {
+      "ratio": "1:15",
+      "checkpoint_sha256": "1ff7ad5454ade6322ddc52d28eefdc4d3c7ade0142fdcc350f139fef08d58e91",
+      "training_signature": "ae67dc29ca3eab1bd2ea3acb7d88dcca4493ed0992c6eaf051eb70b2881b1dcb",
+      "strict_load": true,
+      "parameter_count": 54112694,
+      "state_dict_keys_unchanged": true,
+      "reference_prefill": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 8.58306884765625e-06,
+        "max_tolerance_ratio": 0.011141111142933369
+      },
+      "reference_tokenwise_decode": [
+        {
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 2.384185791015625e-05,
+          "max_tolerance_ratio": 0.00739720044657588
+        },
+        {
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 2.288818359375e-05,
+          "max_tolerance_ratio": 0.006935004610568285
+        },
+        {
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 1.049041748046875e-05,
+          "max_tolerance_ratio": 0.013317256234586239
+        }
+      ],
+      "chunked_forward": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 5.3882598876953125e-05,
+        "max_tolerance_ratio": 0.09175162762403488
+      },
+      "backend": {
+        "requested": "torch_chunked",
+        "resolved": "torch_chunked",
+        "chunk_size": 8,
+        "paths": {
+          "training": "torch.chunked_ssd",
+          "prefill": "torch.chunked_ssd",
+          "decode": "torch.chunked_ssd"
+        },
+        "fused": false,
+        "certification": "requires a recorded numerical and gradient parity run",
+        "mamba_layers": 15
+      },
+      "passed": true
+    },
+    {
+      "ratio": "1:3",
+      "checkpoint_sha256": "0995d848d8538a0169151e94388660554dcf90ce93c9a5bb2fa18ae1aec0504c",
+      "training_signature": "c863e18d81873978947481230c26dea7f692b27977a8841e28b416d55eaa396b",
+      "strict_load": true,
+      "parameter_count": 52525496,
+      "state_dict_keys_unchanged": true,
+      "reference_prefill": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 1.049041748046875e-05,
+        "max_tolerance_ratio": 0.01760833151638508
+      },
+      "reference_tokenwise_decode": [
+        {
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 1.33514404296875e-05,
+          "max_tolerance_ratio": 0.0038359130267053843
+        },
+        {
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 1.33514404296875e-05,
+          "max_tolerance_ratio": 0.022838734090328217
+        },
+        {
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 8.106231689453125e-06,
+          "max_tolerance_ratio": 0.020298197865486145
+        }
+      ],
+      "chunked_forward": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 1.1920928955078125e-05,
+        "max_tolerance_ratio": 0.022182850167155266
+      },
+      "backend": {
+        "requested": "torch_chunked",
+        "resolved": "torch_chunked",
+        "chunk_size": 8,
+        "paths": {
+          "training": "torch.chunked_ssd",
+          "prefill": "torch.chunked_ssd",
+          "decode": "torch.chunked_ssd"
+        },
+        "fused": false,
+        "certification": "requires a recorded numerical and gradient parity run",
+        "mamba_layers": 12
+      },
+      "passed": true
+    },
+    {
+      "ratio": "1:7",
+      "checkpoint_sha256": "e3270576bd3585268d6eec59f6f01fe6227d6e6e446d8b1b284b0b429b6346df",
+      "training_signature": "69fb5518f533374dcb8b61b67af229c20edb260b087d3ea2e0a4001cdb202642",
+      "strict_load": true,
+      "parameter_count": 53583628,
+      "state_dict_keys_unchanged": true,
+      "reference_prefill": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 8.58306884765625e-06,
+        "max_tolerance_ratio": 0.012534750625491142
+      },
+      "reference_tokenwise_decode": [
+        {
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 1.621246337890625e-05,
+          "max_tolerance_ratio": 0.005014088004827499
+        },
+        {
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 1.239776611328125e-05,
+          "max_tolerance_ratio": 0.009194742888212204
+        },
+        {
+          "finite": true,
+          "passed": true,
+          "max_absolute_error": 8.106231689453125e-06,
+          "max_tolerance_ratio": 0.017442090436816216
+        }
+      ],
+      "chunked_forward": {
+        "finite": true,
+        "passed": true,
+        "max_absolute_error": 2.536177635192871e-05,
+        "max_tolerance_ratio": 0.06594523787498474
+      },
+      "backend": {
+        "requested": "torch_chunked",
+        "resolved": "torch_chunked",
+        "chunk_size": 8,
+        "paths": {
+          "training": "torch.chunked_ssd",
+          "prefill": "torch.chunked_ssd",
+          "decode": "torch.chunked_ssd"
+        },
+        "fused": false,
+        "certification": "requires a recorded numerical and gradient parity run",
+        "mamba_layers": 14
+      },
+      "passed": true
+    }
+  ],
+  "limits": "Short FP32 compatibility only; no new training, quality evaluation or fused kernel."
+}

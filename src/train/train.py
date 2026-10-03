@@ -35,6 +35,7 @@ import yaml
 from src.data.dataset import get_batch, load_meta, load_split
 from src.model.config import ModelConfig
 from src.model.lm import HybridLM
+from src.model.scan_backend import BackendUnavailableError, resolve_scan_backend
 
 CHECKPOINT_SCHEMA = 1
 MANIFEST_SCHEMA = 1
@@ -73,8 +74,14 @@ class TrainConfig:
     resume: bool = True
     # misc
     seed: int = 1337
+    # None preserves the historical seed policy; explicit streams support paired experiments.
+    model_seed: int | None = None
+    data_seed: int | None = None
+    eval_seed: int | None = None
     device: str = "cuda"
     grad_checkpointing: bool = True
+    scan_backend: str = "reference"
+    scan_chunk_size: int = 128
     wandb: bool = False
     wandb_project: str = "mamba-hybrid-lm"
 
@@ -137,7 +144,9 @@ def estimate_loss(model, splits, cfg: TrainConfig) -> dict[str, float]:
     out: dict[str, float] = {}
     device_type = torch.device(cfg.device).type
     for name, data in splits.items():
-        generator = make_batch_generator(cfg.seed, f"eval_{name}")
+        generator = make_batch_generator(
+            cfg.seed if cfg.eval_seed is None else cfg.eval_seed, f"eval_{name}",
+        )
         losses = torch.zeros(cfg.eval_iters)
         for i in range(cfg.eval_iters):
             x, y = get_batch(data, cfg.block_size, cfg.batch_size, cfg.device, generator=generator)
@@ -296,7 +305,10 @@ def _code_provenance() -> dict[str, Any]:
 
 def _runtime_provenance() -> dict[str, Any]:
     packages = {}
-    for package in ("einops", "datasets", "tokenizers", "transformers", "numpy", "wandb", "tqdm"):
+    for package in (
+        "einops", "datasets", "tokenizers", "transformers", "numpy", "wandb", "tqdm",
+        "mamba-ssm", "triton", "causal-conv1d",
+    ):
         try:
             packages[package] = importlib_metadata.version(package)
         except importlib_metadata.PackageNotFoundError:
@@ -599,6 +611,23 @@ def _validate_completed_run(
         raise RuntimeError("completed result signature/run ID does not match this run")
     if result.get("name") != mcfg.name or result.get("ratio") != mcfg.ratio:
         raise RuntimeError("completed result variant identity does not match this run")
+    expected_backend = {
+        **resolve_scan_backend(cfg.scan_backend, cfg.scan_chunk_size).metadata(),
+        "mamba_layers": mcfg.n_mamba_layers,
+    }
+    expected_paths = {
+        "training": expected_backend["paths"]["training"] if cfg.max_steps and mcfg.n_mamba_layers else None,
+        "prefill": None, "decode": None,
+    }
+    if manifest.get("scan_backend") != expected_backend or result.get("scan_backend") != expected_backend:
+        raise RuntimeError("completed scan backend metadata does not match the requested execution path")
+    if result.get("observed_paths") != expected_paths:
+        raise RuntimeError("completed observed scan paths do not match this training workload")
+    if (manifest.get("status") == "completed" and manifest.get("observed_paths") != expected_paths
+            or manifest.get("status") == "running" and manifest.get("observed_paths") not in (
+                expected_paths, {"training": None, "prefill": None, "decode": None},
+            )):
+        raise RuntimeError("manifest observed scan paths do not match this training workload")
     expected_tokens = _expected_tokens(cfg, cfg.max_steps)
     if result.get("completed_steps") != cfg.max_steps or result.get("tokens_seen") != expected_tokens:
         raise RuntimeError("completed result step/token counts do not match the requested budget")
@@ -693,11 +722,24 @@ def _validate_intervals(cfg: TrainConfig) -> None:
         value = getattr(cfg, name)
         if not math.isfinite(value) or value < 0:
             raise ValueError(f"{name} must be finite and non-negative")
+    for name in ("seed", "model_seed", "data_seed", "eval_seed"):
+        value = getattr(cfg, name)
+        if value is None and name != "seed":
+            continue
+        if (
+            not isinstance(value, int) or isinstance(value, bool) or not 0 <= value < 2**32
+        ):
+            raise ValueError(f"{name} must be an integer between 0 and 2^32 - 1")
 
 
 def run(cfg: TrainConfig) -> dict[str, Any]:
     """Train, resume, or skip one variant and return its completed headline metrics."""
     _validate_intervals(cfg)
+    # Resolve optional engines before creating a run directory or allocating model weights. An
+    # unavailable fused request fails explicitly and cannot be relabeled as a portable run.
+    resolve_scan_backend(cfg.scan_backend, cfg.scan_chunk_size)
+    if cfg.scan_backend == "fused_mamba" and torch.device(cfg.device).type != "cuda":
+        raise BackendUnavailableError("fused_mamba training requires a CUDA device; CPU fallback is forbidden")
     mcfg = load_model_config(cfg.model_config)
     run_dir = variant_run_dir(cfg, mcfg.name)
     with RunLock(run_dir / ".run.lock"):
@@ -742,6 +784,7 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
             manifest.update({
                 "status": "completed", "updated_at": utc_now(), "completed_at": utc_now(),
                 "completed_steps": result["completed_steps"], "tokens_seen": result["tokens_seen"],
+                "observed_paths": result["observed_paths"],
                 "artifacts": ARTIFACT_FILES,
                 "artifact_sha256": {
                     label: _file_sha256(run_dir / filename) for label, filename in ARTIFACT_FILES.items()
@@ -754,9 +797,10 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
     if existing_artifacts and not cfg.resume:
         raise FileExistsError(f"refusing to overwrite existing run directory: {run_dir}")
 
-    random.seed(cfg.seed)
-    np.random.seed(cfg.seed)
-    torch.manual_seed(cfg.seed)
+    model_seed = cfg.seed if cfg.model_seed is None else cfg.model_seed
+    random.seed(model_seed)
+    np.random.seed(model_seed)
+    torch.manual_seed(model_seed)
     torch.backends.cuda.matmul.allow_tf32 = True
 
     splits = {s: load_split(cfg.data_dir, s) for s in ("train", "val")}
@@ -770,9 +814,17 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
         manifest = _new_manifest(
             cfg, mcfg, signature, data_provenance, code_provenance, runtime_provenance,
         )
-        atomic_write_json(manifest_path, manifest)
 
     model = HybridLM(mcfg).to(cfg.device)
+    backend_metadata = model.configure_scan_backend(cfg.scan_backend, cfg.scan_chunk_size)
+    if manifest_on_disk is None:
+        manifest["scan_backend"] = backend_metadata
+        # Finalization records paths that this workload actually exercised. This trainer never
+        # runs prefill/decode, so those remain null rather than presenting them as measured paths.
+        manifest["observed_paths"] = {"training": None, "prefill": None, "decode": None}
+        atomic_write_json(manifest_path, manifest)
+    elif manifest.get("scan_backend") != backend_metadata:
+        raise RuntimeError(f"scan backend metadata differs from existing manifest in {run_dir}")
     model.grad_checkpointing = cfg.grad_checkpointing
     print(f"{mcfg.name}: {model.num_params()/1e6:.2f}M params  "
           f"(eff. batch {cfg.batch_size*cfg.grad_accum} x {cfg.block_size} tokens)")
@@ -782,7 +834,7 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
         model.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2),
         weight_decay=cfg.weight_decay, fused=fused,
     )
-    train_generator = make_batch_generator(cfg.seed, "train")
+    train_generator = make_batch_generator(cfg.seed if cfg.data_seed is None else cfg.data_seed, "train")
 
     completed_steps = 0
     tokens_seen = 0
@@ -864,21 +916,52 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
     while completed_steps < cfg.max_steps:
         step_index = completed_steps
         lr = cosine_lr(step_index, cfg)
-        for group in optim.param_groups:
-            group["lr"] = lr
 
         step_start = time.perf_counter()
         loss_sum = torch.zeros((), device=cfg.device)
-        for _ in range(cfg.grad_accum):
+        for microbatch_index in range(cfg.grad_accum):
             x, y = get_batch(
                 splits["train"], cfg.block_size, cfg.batch_size, cfg.device,
                 generator=train_generator,
             )
             with torch.autocast(device_type, dtype=torch.bfloat16):
                 _, loss = model(x, y)
+            if not torch.isfinite(loss.detach()).all().item():
+                optim.zero_grad(set_to_none=True)
+                raise FloatingPointError(
+                    f"non-finite training loss at optimizer step {step_index + 1}, "
+                    f"microbatch {microbatch_index + 1}/{cfg.grad_accum}; update skipped. "
+                    f"Resume from the last durable checkpoint: {last_path}"
+                )
             (loss / cfg.grad_accum).backward()
             loss_sum += loss.detach()
-        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+        train_loss = (loss_sum / cfg.grad_accum).item()
+        if not math.isfinite(train_loss):
+            optim.zero_grad(set_to_none=True)
+            raise FloatingPointError(
+                f"non-finite accumulated training loss at optimizer step {step_index + 1}, "
+                f"after microbatch {cfg.grad_accum}/{cfg.grad_accum}; update skipped. "
+                f"Resume from the last durable checkpoint: {last_path}"
+            )
+        try:
+            # Reject the norm before clipping can turn an invalid gradient into another invalid
+            # value. This also detects finite individual gradients whose combined norm overflows.
+            grad_norm = torch.nn.utils.clip_grad_norm_(
+                model.parameters(), cfg.grad_clip, error_if_nonfinite=True,
+            )
+        except RuntimeError as error:
+            if "non-finite" not in str(error):
+                raise
+            optim.zero_grad(set_to_none=True)
+            raise FloatingPointError(
+                f"non-finite training gradient norm at optimizer step {step_index + 1}, "
+                f"after microbatch {cfg.grad_accum}/{cfg.grad_accum}; update skipped. "
+                f"Resume from the last durable checkpoint: {last_path}"
+            ) from error
+        # The learning rate changes only once the update passes its numerical checks. Rejected
+        # updates therefore leave both model weights and optimizer state at their previous values.
+        for group in optim.param_groups:
+            group["lr"] = lr
         optim.step()
         optim.zero_grad(set_to_none=True)
         if device_type == "cuda":
@@ -889,7 +972,6 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
         step_tokens = cfg.batch_size * cfg.grad_accum * cfg.block_size
         tokens_seen += step_tokens
         step_tps = step_tokens / elapsed
-        train_loss = (loss_sum / cfg.grad_accum).item()
         metrics.append({
             "event": "train", "step": completed_steps, "tokens_seen": tokens_seen,
             "loss": train_loss, "grad_norm": float(grad_norm), "lr": lr,
@@ -919,11 +1001,17 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
         "avg_tok_per_s": round(avg_tps), "peak_vram_mb": round(peak_vram),
         "tokens_seen": tokens_seen, "completed_steps": completed_steps,
         "run_id": cfg.run_id, "signature": signature,
+        "scan_backend": backend_metadata,
+        "observed_paths": {
+            "training": backend_metadata["paths"]["training"] if completed_steps and mcfg.n_mamba_layers else None,
+            "prefill": None, "decode": None,
+        },
     }
     atomic_write_json(result_path, result)
     manifest.update({
         "status": "completed", "updated_at": utc_now(), "completed_at": utc_now(),
         "completed_steps": completed_steps, "tokens_seen": tokens_seen,
+        "observed_paths": result["observed_paths"],
         "artifacts": ARTIFACT_FILES,
         "artifact_sha256": {
             label: _file_sha256(run_dir / filename) for label, filename in ARTIFACT_FILES.items()
@@ -947,7 +1035,8 @@ def main() -> None:
         if isinstance(default, bool):
             ap.add_argument(arg, action=argparse.BooleanOptionalAction, default=default, dest=field)
         else:
-            ap.add_argument(arg, type=type(default), default=default, dest=field)
+            value_type = int if field in {"model_seed", "data_seed", "eval_seed"} else type(default)
+            ap.add_argument(arg, type=value_type, default=default, dest=field)
     run(TrainConfig(**vars(ap.parse_args())))
 
 
