@@ -5,7 +5,6 @@
 A 52-54M parameter language-model study that interleaves Mamba-2 selective state-space blocks with causal attention.
 
 [![Week 5](https://img.shields.io/badge/milestone-Week_5_complete-2b8cbe?style=for-the-badge)](#week-5-result)
-[![Tests](https://img.shields.io/badge/tests-55_passed-3f7f5f?style=for-the-badge)](#verification)
 [![Precision](https://img.shields.io/badge/precision-bf16-596c74?style=for-the-badge)](#training-protocol)
 [![GPU](https://img.shields.io/badge/GPU-RTX_5070_12GB-66756c?style=for-the-badge)](#training-protocol)
 
@@ -320,13 +319,15 @@ This read-only report distinguishes the installed CUDA toolkit, driver compatibi
 
 Research foundations and beginner walkthroughs are recorded in [the implementation record](docs/research/IMPLEMENTATION.md). It includes explicit backend selection, independent-seed dry-run campaigns, reliability checks, and retained numerical failures. Optional fused execution remains unavailable here; the portable CUDA gate is a separate result.
 
-Current repository test result (3 October 2026):
+All three historical checkpoints passed a short FP32 CUDA compatibility check on the RTX 5070. This is not a new language-quality evaluation. Run the test command above to verify the current checkout; recorded checks and their scope are linked from the implementation record.
 
-```text
-298 passed, 1 skipped
-```
+Full-suite result on 4 October 2026: **451 passed, 1 skipped** in 29.03 seconds, including CUDA tests on the RTX 5070. The existing file-symlink test is skipped in this Windows context.
 
-The skip is the pre-existing file-symlink check because symlinks are unavailable in this Windows test context. CUDA tests ran on the RTX 5070. All three historical checkpoints also passed a short FP32 CUDA compatibility check. This is not a new language-quality evaluation.
+## Research follow-up
+
+The [4 October precision study](docs/research/PRECISION_STUDY.md) compares five precision settings on the same small random models across three seeds. Disabling scan autocast improves internal full/cached agreement to 15/15 cases in both architectures, but every BF16 setting fails its complete FP32-anchor comparison in all 15 cases per architecture. Defaults and historical results remain unchanged. The study explains frozen-operand scan and gradient probes, projection replay, validation safeguards, reproduction and the checks needed before a numerical change.
+
+The [validated summary](docs/research/precision-summary-2026-10-04.json) and [six raw CUDA reports](docs/research/checks/precision-2026-10-04/) preserve the failures and exact source/runtime identities. These are diagnostic measurements, with no new language-quality ranking, speed result or fused-kernel certification.
 
 ## Roadmap
 

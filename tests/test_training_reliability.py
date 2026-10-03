@@ -632,3 +632,182 @@ def test_all_attention_training_never_claims_an_executed_scan(tmp_path, monkeypa
     assert result["observed_paths"] == {"training": None, "prefill": None, "decode": None}
     assert manifest["observed_paths"] == result["observed_paths"]
     assert run(cfg) == result
+
+
+@pytest.mark.parametrize("was_training", [True, False])
+def test_evaluation_restores_prior_model_mode_on_success(was_training):
+    class ConstantModel(torch.nn.Module):
+        def forward(self, x, targets):
+            assert not self.training
+            return None, torch.tensor(4.0)
+
+    model = ConstantModel().train(was_training)
+    cfg = TrainConfig(device="cpu", block_size=4, batch_size=1, eval_iters=2)
+    data = np.arange(64, dtype=np.uint16)
+    assert estimate_loss(model, {"train": data, "val": data}, cfg) == {"train": 4.0, "val": 4.0}
+    assert model.training is was_training
+
+
+@pytest.mark.parametrize("was_training", [True, False])
+@pytest.mark.parametrize("invalid, expected", [
+    (float("nan"), "evaluation loss.*split 'train'.*batch 1/2"),
+    (float("inf"), "evaluation loss.*split 'train'.*batch 1/2"),
+    (3e38, "aggregate evaluation loss.*split 'train'.*batch 2/2"),
+])
+def test_invalid_evaluation_losses_restore_mode_with_split_and_batch_context(was_training, invalid, expected):
+    class InvalidModel(torch.nn.Module):
+        def forward(self, x, targets):
+            assert not self.training
+            return None, torch.tensor(invalid)
+
+    model = InvalidModel().train(was_training)
+    cfg = TrainConfig(device="cpu", block_size=4, batch_size=1, eval_iters=2)
+    with pytest.raises(FloatingPointError, match=expected):
+        estimate_loss(model, {"train": np.arange(64, dtype=np.uint16)}, cfg)
+    assert model.training is was_training
+
+
+@pytest.mark.parametrize("was_training", [True, False])
+def test_unexpected_evaluation_failure_restores_prior_model_mode(was_training):
+    class FailingModel(torch.nn.Module):
+        def forward(self, x, targets):
+            raise RuntimeError("injected evaluation forward failure")
+
+    model = FailingModel().train(was_training)
+    cfg = TrainConfig(device="cpu", block_size=4, batch_size=1, eval_iters=2)
+    with pytest.raises(RuntimeError, match="evaluation forward failure"):
+        estimate_loss(model, {"train": np.arange(64, dtype=np.uint16)}, cfg)
+    assert model.training is was_training
+
+
+@pytest.mark.parametrize("invalid, expected", [
+    (float("nan"), "evaluation loss.*split 'val'.*batch 1/2"),
+    (float("inf"), "evaluation loss.*split 'val'.*batch 1/2"),
+    (3e38, "aggregate evaluation loss.*split 'val'.*batch 2/2"),
+    (1000.0, "validation perplexity overflow.*step 2.*validation loss"),
+])
+def test_invalid_evaluation_preserves_last_and_best_without_publishing_bad_metrics(tmp_path, monkeypatch, invalid, expected):
+    cfg = replace(_tiny_train_config(tmp_path), eval_iters=2)
+    real_model = train_module.HybridLM
+    captured = {}
+    training_calls = 0
+    failed_step_evaluation_calls = 0
+
+    def make_model(*args, **kwargs):
+        model = real_model(*args, **kwargs)
+        captured["model"] = model
+        real_forward = model.forward
+
+        def forward(x, targets):
+            nonlocal training_calls, failed_step_evaluation_calls
+            if model.training:
+                training_calls += 1
+                if training_calls == 2:
+                    run_dir = variant_run_dir(cfg, "tiny-1:3")
+                    captured["last_bytes"] = (run_dir / "last.pt").read_bytes()
+                    captured["best_bytes"] = (run_dir / "best.pt").read_bytes()
+            logits, loss = real_forward(x, targets)
+            if not model.training and training_calls == 2:
+                failed_step_evaluation_calls += 1
+                if failed_step_evaluation_calls > cfg.eval_iters:  # validation split at step two
+                    loss = loss.new_tensor(invalid)
+            return logits, loss
+
+        model.forward = forward
+        return model
+
+    monkeypatch.setattr(train_module, "HybridLM", make_model)
+    with pytest.raises(FloatingPointError, match=expected):
+        run(cfg)
+
+    run_dir = variant_run_dir(cfg, "tiny-1:3")
+    assert captured["model"].training is True
+    assert (run_dir / "last.pt").read_bytes() == captured["last_bytes"]
+    assert (run_dir / "best.pt").read_bytes() == captured["best_bytes"]
+    last = torch.load(run_dir / "last.pt", map_location="cpu", weights_only=True)
+    assert last["completed_steps"] == 1 and last["tokens_seen"] == 4
+    assert not (run_dir / "result.json").exists()
+    assert json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))["status"] != "completed"
+    records = [json.loads(line) for line in (run_dir / "metrics.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(row["event"] == "train" and row["step"] == 2 for row in records)  # that update was valid
+    assert not any(row["event"] == "eval" and row["step"] == 2 for row in records)
+
+    # Recovery replays from the valid checkpoint and reconciles the later valid train-only row.
+    monkeypatch.setattr(train_module, "HybridLM", real_model)
+    recovered = run(cfg)
+    assert recovered["completed_steps"] == 2
+    records = [json.loads(line) for line in (run_dir / "metrics.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert sum(row["event"] == "train" and row["step"] == 2 for row in records) == 1
+    assert sum(row["event"] == "eval" and row["step"] == 2 for row in records) == 1
+
+
+@pytest.mark.parametrize("field", [
+    "eval_interval", "eval_iters", "log_interval", "checkpoint_interval",
+    "batch_size", "grad_accum", "block_size", "max_steps", "warmup_steps",
+])
+@pytest.mark.parametrize("invalid", [True, False, 1.5, "2", None, -1])
+def test_direct_training_rejects_malformed_integer_settings_before_artifacts(tmp_path, field, invalid):
+    checkpoints = tmp_path / "checkpoints"
+    cfg = TrainConfig(ckpt_dir=str(checkpoints), **{field: invalid})
+    with pytest.raises(ValueError, match=rf"{field} must be a .*integer"):
+        run(cfg)
+    assert not checkpoints.exists()  # validation precedes namespace creation and the run lock
+
+
+@pytest.mark.parametrize("field", ["beta1", "beta2"])
+@pytest.mark.parametrize("invalid", [True, False, "0.9", None, -0.1, 1.0, 1.1, float("nan"), float("inf")])
+def test_direct_training_rejects_invalid_optimizer_betas_before_artifacts(tmp_path, field, invalid):
+    checkpoints = tmp_path / "checkpoints"
+    cfg = TrainConfig(ckpt_dir=str(checkpoints), **{field: invalid})
+    with pytest.raises(ValueError, match=rf"{field} must be a finite number"):
+        run(cfg)
+    assert not checkpoints.exists()
+
+
+def test_zero_step_budgets_and_zero_optimizer_betas_remain_valid(tmp_path):
+    cfg = replace(_tiny_train_config(tmp_path), max_steps=0, warmup_steps=0, beta1=0, beta2=0.0)
+    result = run(cfg)
+    assert result["completed_steps"] == 0 and result["tokens_seen"] == 0
+    run_dir = variant_run_dir(cfg, "tiny-1:3")
+    last = torch.load(run_dir / "last.pt", map_location="cpu", weights_only=True)
+    assert last["optimizer"]["state"] == {}  # the baseline evaluation needs no optimizer update
+    assert last["optimizer"]["param_groups"][0]["betas"] == (0.0, 0.0)
+    assert all(isinstance(value, float) for value in last["optimizer"]["param_groups"][0]["betas"])
+    assert (run_dir / "best.pt").is_file()
+    assert result["observed_paths"]["training"] is None
+    assert run(cfg) == result
+
+
+@pytest.mark.parametrize("field", [
+    "eval_interval", "eval_iters", "log_interval", "checkpoint_interval",
+    "batch_size", "grad_accum", "block_size",
+])
+def test_positive_training_settings_reject_zero_before_artifacts(tmp_path, field):
+    checkpoints = tmp_path / "checkpoints"
+    with pytest.raises(ValueError, match=rf"{field} must be a positive integer"):
+        run(TrainConfig(ckpt_dir=str(checkpoints), **{field: 0}))
+    assert not checkpoints.exists()
+
+
+@pytest.mark.parametrize("field", ["lr", "min_lr", "weight_decay", "grad_clip"])
+@pytest.mark.parametrize("invalid", [True, False, "0.1", None, float("nan"), float("inf"), -0.1])
+def test_direct_training_rejects_malformed_nonnegative_numbers_before_artifacts(tmp_path, field, invalid):
+    checkpoints = tmp_path / "checkpoints"
+    with pytest.raises(ValueError, match=rf"{field} must be finite and non-negative"):
+        run(TrainConfig(ckpt_dir=str(checkpoints), **{field: invalid}))
+    assert not checkpoints.exists()
+
+
+def test_zero_nonnegative_optimizer_settings_remain_valid(tmp_path):
+    cfg = replace(
+        _tiny_train_config(tmp_path), max_steps=1, warmup_steps=0,
+        lr=0, min_lr=0.0, weight_decay=0, grad_clip=0.0,
+    )
+    result = run(cfg)
+    assert result["completed_steps"] == 1
+    run_dir = variant_run_dir(cfg, "tiny-1:3")
+    last = torch.load(run_dir / "last.pt", map_location="cpu", weights_only=True)
+    best = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=True)
+    assert best["step"] == 0  # a zero learning rate leaves the baseline weights unchanged
+    _assert_nested_equal(best["model"], last["model"])
+    assert last["optimizer"]["param_groups"][0]["lr"] == 0.0

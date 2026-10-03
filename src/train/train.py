@@ -140,21 +140,35 @@ def make_batch_generator(seed: int, stream: str) -> torch.Generator:
 @torch.no_grad()
 def estimate_loss(model, splits, cfg: TrainConfig) -> dict[str, float]:
     """Evaluate the same fixed windows every time without advancing the training sampler."""
+    was_training = model.training
     model.eval()
     out: dict[str, float] = {}
-    device_type = torch.device(cfg.device).type
-    for name, data in splits.items():
-        generator = make_batch_generator(
-            cfg.seed if cfg.eval_seed is None else cfg.eval_seed, f"eval_{name}",
-        )
-        losses = torch.zeros(cfg.eval_iters)
-        for i in range(cfg.eval_iters):
-            x, y = get_batch(data, cfg.block_size, cfg.batch_size, cfg.device, generator=generator)
-            with torch.autocast(device_type, dtype=torch.bfloat16):
-                _, loss = model(x, y)
-            losses[i] = loss.item()
-        out[name] = losses.mean().item()
-    model.train()
+    try:
+        device_type = torch.device(cfg.device).type
+        for name, data in splits.items():
+            generator = make_batch_generator(
+                cfg.seed if cfg.eval_seed is None else cfg.eval_seed, f"eval_{name}",
+            )
+            losses = torch.zeros(cfg.eval_iters)
+            for i in range(cfg.eval_iters):
+                x, y = get_batch(data, cfg.block_size, cfg.batch_size, cfg.device, generator=generator)
+                with torch.autocast(device_type, dtype=torch.bfloat16):
+                    _, loss = model(x, y)
+                batch_loss = loss.item()
+                if not math.isfinite(batch_loss):
+                    raise FloatingPointError(
+                        f"non-finite evaluation loss for split {name!r}, batch {i + 1}/{cfg.eval_iters}"
+                    )
+                losses[i] = batch_loss
+            mean_loss = losses.mean().item()
+            if not math.isfinite(mean_loss):
+                raise FloatingPointError(
+                    f"non-finite aggregate evaluation loss for split {name!r}, "
+                    f"after batch {cfg.eval_iters}/{cfg.eval_iters}"
+                )
+            out[name] = mean_loss
+    finally:
+        model.train(was_training)
     return out
 
 
@@ -714,14 +728,23 @@ def _validate_intervals(cfg: TrainConfig) -> None:
         "eval_interval", "eval_iters", "log_interval", "checkpoint_interval",
         "batch_size", "grad_accum", "block_size",
     ):
-        if getattr(cfg, name) <= 0:
-            raise ValueError(f"{name} must be positive")
-    if cfg.max_steps < 0 or cfg.warmup_steps < 0:
-        raise ValueError("max_steps and warmup_steps must be non-negative")
+        value = getattr(cfg, name)
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError(f"{name} must be a positive integer")
+    for name in ("max_steps", "warmup_steps"):
+        value = getattr(cfg, name)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"{name} must be a non-negative integer")
     for name in ("lr", "min_lr", "weight_decay", "grad_clip"):
         value = getattr(cfg, name)
-        if not math.isfinite(value) or value < 0:
+        if (not isinstance(value, (int, float)) or isinstance(value, bool)
+                or not math.isfinite(value) or value < 0):
             raise ValueError(f"{name} must be finite and non-negative")
+    for name in ("beta1", "beta2"):
+        value = getattr(cfg, name)
+        if (not isinstance(value, (int, float)) or isinstance(value, bool)
+                or not math.isfinite(value) or not 0 <= value < 1):
+            raise ValueError(f"{name} must be a finite number in [0, 1)")
     for name in ("seed", "model_seed", "data_seed", "eval_seed"):
         value = getattr(cfg, name)
         if value is None and name != "seed":
@@ -831,7 +854,7 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
 
     fused = torch.device(cfg.device).type == "cuda" and torch.cuda.is_available()
     optim = torch.optim.AdamW(
-        model.parameters(), lr=cfg.lr, betas=(cfg.beta1, cfg.beta2),
+        model.parameters(), lr=cfg.lr, betas=(float(cfg.beta1), float(cfg.beta2)),
         weight_decay=cfg.weight_decay, fused=fused,
     )
     train_generator = make_batch_generator(cfg.seed if cfg.data_seed is None else cfg.data_seed, "train")
@@ -886,7 +909,18 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
         nonlocal best_val, eval_seconds
         e0 = time.perf_counter()
         losses = estimate_loss(model, splits, cfg)
-        ppl = math.exp(losses["val"])
+        try:
+            ppl = math.exp(losses["val"])
+        except OverflowError as error:
+            raise FloatingPointError(
+                f"validation perplexity overflow at completed step {step}; "
+                f"validation loss {losses['val']!r}. Evaluation metrics and best checkpoint were not published."
+            ) from error
+        if not math.isfinite(ppl):
+            raise FloatingPointError(
+                f"non-finite validation perplexity at completed step {step}; "
+                f"validation loss {losses['val']!r}. Evaluation metrics and best checkpoint were not published."
+            )
         eval_seconds += time.perf_counter() - e0
         record = {
             "event": "eval", "step": step, "tokens_seen": tokens_seen,
