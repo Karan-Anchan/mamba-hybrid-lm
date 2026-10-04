@@ -22,6 +22,7 @@ import re
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from importlib import metadata as importlib_metadata
@@ -82,6 +83,7 @@ class TrainConfig:
     grad_checkpointing: bool = True
     scan_backend: str = "reference"
     scan_chunk_size: int = 128
+    precision: str = "bfloat16"
     wandb: bool = False
     wandb_project: str = "mamba-hybrid-lm"
 
@@ -137,6 +139,72 @@ def make_batch_generator(seed: int, stream: str) -> torch.Generator:
     return torch.Generator(device="cpu").manual_seed(seed + offset)
 
 
+def precision_policy(precision: str) -> dict[str, Any]:
+    """Describe a numerical policy; selecting it does not certify its results."""
+    if not isinstance(precision, str) or precision not in {"bfloat16", "float32"}:
+        raise ValueError("precision must be 'bfloat16' or 'float32'")
+    return {
+        "precision": precision,
+        "autocast_enabled": precision == "bfloat16",
+        "autocast_dtype": "bfloat16" if precision == "bfloat16" else None,
+        "tf32_policy": "legacy" if precision == "bfloat16" else "disabled",
+    }
+
+
+@contextmanager
+def _autocast(cfg: TrainConfig):
+    policy = precision_policy(cfg.precision)
+    with _precision_runtime(cfg), torch.autocast(
+            torch.device(cfg.device).type, dtype=torch.bfloat16,
+            enabled=policy["autocast_enabled"]):
+        yield
+
+
+@contextmanager
+def _precision_runtime(cfg: TrainConfig):
+    """Scope the nondefault FP32 policy without leaking TF32 changes to the caller."""
+    if cfg.precision == "bfloat16":
+        yield
+        return
+    matmul_tf32 = torch.backends.cuda.matmul.allow_tf32
+    cudnn_tf32 = torch.backends.cudnn.allow_tf32
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
+        yield
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = matmul_tf32
+        torch.backends.cudnn.allow_tf32 = cudnn_tf32
+
+
+def _precision_metadata(cfg: TrainConfig) -> dict[str, Any]:
+    cuda = torch.device(cfg.device).type == "cuda"
+    return {
+        "policy": precision_policy(cfg.precision),
+        "device_type": torch.device(cfg.device).type,
+        "runtime_flags": {
+            "cuda_matmul_allow_tf32": bool(torch.backends.cuda.matmul.allow_tf32) if cuda else None,
+            "cudnn_allow_tf32": bool(torch.backends.cudnn.allow_tf32) if cuda else None,
+        },
+    }
+
+
+def _validate_precision_metadata(value: dict[str, Any], cfg: TrainConfig) -> None:
+    metadata = value.get("training_precision")
+    # Missing precision means historical BF16. It cannot describe the new FP32 policy.
+    if metadata is None and cfg.precision == "bfloat16":
+        return
+    expected = _precision_metadata(cfg)
+    if expected["device_type"] == "cuda":
+        # Default training sets matmul TF32 true after completed-run validation;
+        # the explicit FP32 policy disables both flags before any model execution.
+        expected["runtime_flags"]["cuda_matmul_allow_tf32"] = cfg.precision == "bfloat16"
+        if cfg.precision == "float32":
+            expected["runtime_flags"]["cudnn_allow_tf32"] = False
+    if metadata != expected:
+        raise RuntimeError("training precision metadata does not match this numerical policy")
+
+
 @torch.no_grad()
 def estimate_loss(model, splits, cfg: TrainConfig) -> dict[str, float]:
     """Evaluate the same fixed windows every time without advancing the training sampler."""
@@ -144,7 +212,6 @@ def estimate_loss(model, splits, cfg: TrainConfig) -> dict[str, float]:
     model.eval()
     out: dict[str, float] = {}
     try:
-        device_type = torch.device(cfg.device).type
         for name, data in splits.items():
             generator = make_batch_generator(
                 cfg.seed if cfg.eval_seed is None else cfg.eval_seed, f"eval_{name}",
@@ -152,7 +219,7 @@ def estimate_loss(model, splits, cfg: TrainConfig) -> dict[str, float]:
             losses = torch.zeros(cfg.eval_iters)
             for i in range(cfg.eval_iters):
                 x, y = get_batch(data, cfg.block_size, cfg.batch_size, cfg.device, generator=generator)
-                with torch.autocast(device_type, dtype=torch.bfloat16):
+                with _autocast(cfg):
                     _, loss = model(x, y)
                 batch_loss = loss.item()
                 if not math.isfinite(batch_loss):
@@ -261,9 +328,7 @@ def _signature_payload(
     runtime_provenance: dict[str, Any],
 ) -> dict[str, Any]:
     # Tracking preferences do not affect the numerical trajectory; every training-relevant field does.
-    train_config = asdict(cfg)
-    for key in ("resume", "wandb", "wandb_project"):
-        train_config.pop(key)
+    train_config = _trajectory_config_dict(asdict(cfg))
     return {
         "schema": MANIFEST_SCHEMA,
         "train_config": train_config,
@@ -467,6 +532,8 @@ def _trajectory_config_dict(value: dict[str, Any]) -> dict[str, Any]:
     filtered = dict(value)
     for key in ("resume", "wandb", "wandb_project"):
         filtered.pop(key, None)
+    if filtered.get("precision", "bfloat16") == "bfloat16":
+        filtered.pop("precision", None)
     return filtered
 
 
@@ -625,6 +692,8 @@ def _validate_completed_run(
         raise RuntimeError("completed result signature/run ID does not match this run")
     if result.get("name") != mcfg.name or result.get("ratio") != mcfg.ratio:
         raise RuntimeError("completed result variant identity does not match this run")
+    _validate_precision_metadata(manifest, cfg)
+    _validate_precision_metadata(result, cfg)
     expected_backend = {
         **resolve_scan_backend(cfg.scan_backend, cfg.scan_chunk_size).metadata(),
         "mamba_layers": mcfg.n_mamba_layers,
@@ -724,6 +793,7 @@ class RunLock:
 
 
 def _validate_intervals(cfg: TrainConfig) -> None:
+    precision_policy(cfg.precision)
     for name in (
         "eval_interval", "eval_iters", "log_interval", "checkpoint_interval",
         "batch_size", "grad_accum", "block_size",
@@ -766,7 +836,8 @@ def run(cfg: TrainConfig) -> dict[str, Any]:
     mcfg = load_model_config(cfg.model_config)
     run_dir = variant_run_dir(cfg, mcfg.name)
     with RunLock(run_dir / ".run.lock"):
-        return _run_locked(cfg, mcfg, run_dir)
+        with _precision_runtime(cfg):
+            return _run_locked(cfg, mcfg, run_dir)
 
 
 def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str, Any]:
@@ -824,7 +895,8 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
     random.seed(model_seed)
     np.random.seed(model_seed)
     torch.manual_seed(model_seed)
-    torch.backends.cuda.matmul.allow_tf32 = True
+    if cfg.precision == "bfloat16":
+        torch.backends.cuda.matmul.allow_tf32 = True
 
     splits = {s: load_split(cfg.data_dir, s) for s in ("train", "val")}
 
@@ -833,6 +905,7 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
         if (manifest.get("signature") != signature or manifest.get("data") != data_provenance
                 or manifest.get("code") != code_provenance or manifest.get("runtime") != runtime_provenance):
             raise RuntimeError(f"run configuration differs from existing manifest in {run_dir}")
+        _validate_precision_metadata(manifest, cfg)
     else:
         manifest = _new_manifest(
             cfg, mcfg, signature, data_provenance, code_provenance, runtime_provenance,
@@ -842,6 +915,7 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
     backend_metadata = model.configure_scan_backend(cfg.scan_backend, cfg.scan_chunk_size)
     if manifest_on_disk is None:
         manifest["scan_backend"] = backend_metadata
+        manifest["training_precision"] = _precision_metadata(cfg)
         # Finalization records paths that this workload actually exercised. This trainer never
         # runs prefill/decode, so those remain null rather than presenting them as measured paths.
         manifest["observed_paths"] = {"training": None, "prefill": None, "decode": None}
@@ -958,7 +1032,7 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
                 splits["train"], cfg.block_size, cfg.batch_size, cfg.device,
                 generator=train_generator,
             )
-            with torch.autocast(device_type, dtype=torch.bfloat16):
+            with _autocast(cfg):
                 _, loss = model(x, y)
             if not torch.isfinite(loss.detach()).all().item():
                 optim.zero_grad(set_to_none=True)
@@ -1036,6 +1110,7 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
         "tokens_seen": tokens_seen, "completed_steps": completed_steps,
         "run_id": cfg.run_id, "signature": signature,
         "scan_backend": backend_metadata,
+        "training_precision": _precision_metadata(cfg),
         "observed_paths": {
             "training": backend_metadata["paths"]["training"] if completed_steps and mcfg.n_mamba_layers else None,
             "prefill": None, "decode": None,
@@ -1070,7 +1145,8 @@ def main() -> None:
             ap.add_argument(arg, action=argparse.BooleanOptionalAction, default=default, dest=field)
         else:
             value_type = int if field in {"model_seed", "data_seed", "eval_seed"} else type(default)
-            ap.add_argument(arg, type=value_type, default=default, dest=field)
+            choices = ("bfloat16", "float32") if field == "precision" else None
+            ap.add_argument(arg, type=value_type, default=default, dest=field, choices=choices)
     run(TrainConfig(**vars(ap.parse_args())))
 
 

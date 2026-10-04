@@ -404,7 +404,15 @@ def _load_model(seed: int, ratio: str, device: str, checkpoint: Path | None):
     loaded = None
     if checkpoint is not None:
         checkpoint = Path(checkpoint).resolve()
-        identity = {"path": str(checkpoint), "sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
+        repository_root = Path(__file__).resolve().parents[1]
+        try:
+            checkpoint_reference = checkpoint.relative_to(repository_root).as_posix()
+            reference_scope = "repository-relative"
+        except ValueError:
+            checkpoint_reference = checkpoint.name
+            reference_scope = "external basename; content identified by SHA256"
+        identity = {"path": checkpoint_reference, "path_scope": reference_scope,
+                    "sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
                     "mode": "read-only; weights_only=True; no checkpoint writes"}
         loaded = torch.load(checkpoint, map_location="cpu", weights_only=True)
         if not isinstance(loaded, dict) or not isinstance(loaded.get("model_config"), dict):

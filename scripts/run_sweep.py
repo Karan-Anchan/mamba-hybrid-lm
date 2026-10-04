@@ -34,6 +34,7 @@ from src.train.train import (  # noqa: E402
     load_model_config,
     validate_run_id,
     variant_slug,
+    precision_policy,
 )
 from src.data.prepare_data import validate_prepared_dataset  # noqa: E402
 from src.model.scan_backend import resolve_scan_backend  # noqa: E402
@@ -78,15 +79,18 @@ def warmup_steps_for_fraction(steps: int, fraction: float) -> int:
 def _sweep_signature(
     args: argparse.Namespace, run_id: str, data_signature: str, matrix: list[dict], backend_plan: dict,
 ) -> str:
+    settings = {
+        key: value for key, value in vars(args).items()
+        if key not in {"resume", "wandb", "out", "dry_run"}
+    }
+    if settings.get("precision", "bfloat16") == "bfloat16":
+        settings.pop("precision", None)
     payload = {
         "matrix": matrix,
         "scan_backend_plan": backend_plan,
         "data_signature": data_signature,
         "run_id": run_id,
-        "settings": {
-            key: value for key, value in vars(args).items()
-            if key not in {"resume", "wandb", "out", "dry_run"}
-        },
+        "settings": settings,
     }
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
@@ -128,12 +132,15 @@ def argument_parser() -> argparse.ArgumentParser:
                     help="explicit scan implementation; unavailable fused requests fail without fallback")
     ap.add_argument("--scan-chunk-size", type=int, default=128,
                     help="bounded scan chunk length; fused mode requires a power of two")
+    ap.add_argument("--precision", choices=("bfloat16", "float32"), default="bfloat16",
+                    help="historical BF16 autocast, or a distinct FP32 policy with both TF32 flags disabled")
     ap.add_argument("--dry-run", action="store_true",
                     help="verify data/configs and print a JSON matrix without creating outputs or training")
     return ap
 
 
 def _validate_settings(args: argparse.Namespace) -> None:
+    precision_policy(args.precision)
     for name in (
         "max_steps", "block_size", "batch_size", "grad_accum", "eval_interval",
         "eval_iters", "log_interval", "checkpoint_interval", "scan_chunk_size",
@@ -207,6 +214,8 @@ def prepare_matrix(args: argparse.Namespace, run_id: str, data_manifest: dict) -
                 "eval_seed": legacy_seed if args.eval_seed is None else args.eval_seed,
                 "tokens": tokens_for_steps(args.max_steps, args.batch_size, args.grad_accum, args.block_size),
             })
+            if args.precision != "bfloat16":
+                matrix[-1]["precision"] = args.precision
     return matrix
 
 
@@ -231,6 +240,8 @@ def _execute_sweep(
                 or manifest.get("tokens_per_variant") != tokens_per_step * args.max_steps
                 or manifest.get("tokens_total") != sum(arm["tokens"] for arm in matrix)):
             raise RuntimeError(f"sweep manifest matrix/budget differs from its signed identity: {out}")
+        if manifest.get("precision_policy", precision_policy("bfloat16")) != precision_policy(args.precision):
+            raise RuntimeError("sweep precision policy differs from its signed identity")
         manifest.update({"status": "running", "resumed_at": datetime.now(timezone.utc).isoformat()})
     else:
         manifest = {
@@ -241,6 +252,7 @@ def _execute_sweep(
             "configs": args.configs or CONFIGS,
             "matrix": matrix,
             "scan_backend_plan": backend_plan,
+            "precision_policy": precision_policy(args.precision),
             "arguments": vars(args),
             "data_signature": data_signature,
             "tokens_per_step": tokens_per_step,
@@ -280,6 +292,7 @@ def _execute_sweep(
             eval_seed=arm["eval_seed"] if args.model_seeds is not None else args.eval_seed,
             scan_backend=args.scan_backend,
             scan_chunk_size=args.scan_chunk_size,
+            precision=args.precision,
         )
         result = dict(run(train_cfg))
         result["sweep_arm"] = arm
@@ -324,6 +337,7 @@ def main(argv: list[str] | None = None) -> None:
             "tokens_per_step": tokens_for_steps(1, args.batch_size, args.grad_accum, args.block_size),
             "tokens_per_arm": matrix[0]["tokens"], "tokens_total": sum(arm["tokens"] for arm in matrix),
             "matrix": matrix, "scan_backend_plan": backend_plan,
+            "precision_policy": precision_policy(args.precision),
             "signature": _sweep_signature(args, run_id, data_signature, matrix, backend_plan),
         }, indent=2, sort_keys=True, allow_nan=False))
         return

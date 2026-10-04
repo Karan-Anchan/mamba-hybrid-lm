@@ -145,6 +145,8 @@ def test_historical_checkpoint_is_read_only_and_configuration_controls_the_study
     report = study.run_study(lengths=[1], batch_size=1, chunk_size=2, checkpoint=checkpoint)
     assert checkpoint.read_bytes() == before
     assert report["protocol"]["checkpoint"]["sha256"] == hashlib.sha256(before).hexdigest()
+    assert report["protocol"]["checkpoint"]["path"] == checkpoint.name
+    assert report["protocol"]["checkpoint"]["path_scope"] == "external basename; content identified by SHA256"
     assert report["protocol"]["model_config"]["d_model"] == 16
     assert report["protocol"]["weights_sha256"] == study.weight_sha256(model)
 

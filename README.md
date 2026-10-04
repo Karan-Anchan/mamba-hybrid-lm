@@ -329,6 +329,10 @@ The [4 October precision study](docs/research/PRECISION_STUDY.md) compares five 
 
 The [validated summary](docs/research/precision-summary-2026-10-04.json) and [six raw CUDA reports](docs/research/checks/precision-2026-10-04/) preserve the failures and exact source/runtime identities. These are diagnostic measurements, with no new language-quality ranking, speed result or fused-kernel certification.
 
+The [trained-checkpoint follow-up](docs/research/CHECKPOINT_PRECISION_STUDY.md) repeats the checks at the actual model shapes. None of the BF16 treatments passes internal agreement across the four tested lengths. A shared natural-text window adds whole-model FP32 gradient checks: all 588 unique parameter-tensor comparisons pass, while the 1:15 forward predictions still exceed the unchanged tolerance. Forward outputs, gradients and descriptive next-token probability effects remain separate results.
+
+Training and sweeps now accept `--precision float32` as an explicitly identified experiment with BF16 autocast and TF32 disabled. Historical BF16 remains the default. The [five-arm resource pilot](docs/research/checks/fp32-resource-pilot-plan-2026-10-04.json) includes pure attention, pure Mamba and all three hybrids, but remains unexecuted at the unresolved numerical gate. No pilot quality or speed values are reported.
+
 ## Roadmap
 
 - [x] Week 1 - environment, tokenizer, data pipeline, parameter budget

@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "date": "2026-10-04",
+  "status_at_declaration": "planned_before_execution",
+  "study": "K2 natural validation numerical effects and K3 full-model FP32 gradients",
+  "scope": "Read-only diagnostic on checkpoint-selection validation pool",
+  "training_run_id": "week3-700m-v1",
+  "checkpoints": [
+    {
+      "ratio": "1:3",
+      "path": "checkpoints/week3-700m-v1/hybrid-1_3-76f9c3a9/best.pt",
+      "sha256": "0995d848d8538a0169151e94388660554dcf90ce93c9a5bb2fa18ae1aec0504c"
+    },
+    {
+      "ratio": "1:7",
+      "path": "checkpoints/week3-700m-v1/hybrid-1_7-9a5e2bc8/best.pt",
+      "sha256": "e3270576bd3585268d6eec59f6f01fe6227d6e6e446d8b1b284b0b429b6346df"
+    },
+    {
+      "ratio": "1:15",
+      "path": "checkpoints/week3-700m-v1/hybrid-1_15-ee7b7913/best.pt",
+      "sha256": "1ff7ad5454ade6322ddc52d28eefdc4d3c7ade0142fdcc350f139fef08d58e91"
+    }
+  ],
+  "device": "cuda",
+  "seed": 2027,
+  "length": 257,
+  "prefix_length": 128,
+  "windows": 1,
+  "batch_size": 1,
+  "chunk_size": 128,
+  "full_tokenwise": true,
+  "shared_inputs": "Same natural token window and shifted targets for all three checkpoints",
+  "fp32_backend": "reference versus torch_chunked forward, loss and all unique parameter gradients",
+  "bf16_cached": "Original BF16 full, prefill, tokenwise and cloned real-prefix continuations; separate common FP32 anchor",
+  "tolerances": {
+    "float32": {
+      "atol": 3E-05,
+      "rtol": 0.0003
+    },
+    "bfloat16": {
+      "atol": 0.002,
+      "rtol": 0.02
+    }
+  },
+  "precision_flags": {
+    "cuda_matmul_allow_tf32": false,
+    "cudnn_allow_tf32": false
+  },
+  "quality_equivalence_margin": null,
+  "gpu_wall_ceiling_seconds": 600,
+  "output": "docs/research/checks/trained-numerics-2026-10-04/natural-257-seed-2027.json",
+  "limits": [
+    "Validation pool helped select checkpoints; this is not an untouched quality test",
+    "One window is diagnostic coverage, not statistical replication",
+    "Probability effects are descriptive; no quality-equivalence threshold",
+    "No optimizer, weight updates or BF16 full-model gradient certification",
+    "Retain all failures and original tolerances",
+    "Timing includes checks and hashing; no throughput ranking"
+  ]
+}

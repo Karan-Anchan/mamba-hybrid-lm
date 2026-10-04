@@ -188,8 +188,9 @@ def test_atomic_checkpoint_and_metrics_recovery(tmp_path, monkeypatch):
     assert rows == [{"event": "train", "step": 1}]
 
 
-def test_interrupted_run_resumes_then_completed_run_skips(tmp_path, monkeypatch):
-    cfg = _tiny_train_config(tmp_path)
+@pytest.mark.parametrize("precision", ["bfloat16", "float32"])
+def test_interrupted_run_resumes_then_completed_run_skips(tmp_path, monkeypatch, precision):
+    cfg = replace(_tiny_train_config(tmp_path), precision=precision)
     baseline_cfg = replace(cfg, run_id="baseline")
     run(baseline_cfg)
     baseline_dir = variant_run_dir(baseline_cfg, "tiny-1:3")
@@ -811,3 +812,153 @@ def test_zero_nonnegative_optimizer_settings_remain_valid(tmp_path):
     assert best["step"] == 0  # a zero learning rate leaves the baseline weights unchanged
     _assert_nested_equal(best["model"], last["model"])
     assert last["optimizer"]["param_groups"][0]["lr"] == 0.0
+
+
+@pytest.mark.parametrize("precision, expected_dtype, autocast", [
+    ("bfloat16", torch.bfloat16, True), ("float32", torch.float32, False),
+])
+def test_precision_selection_reaches_real_training_and_evaluation(
+    tmp_path, monkeypatch, precision, expected_dtype, autocast,
+):
+    cfg = replace(_tiny_train_config(tmp_path), max_steps=1, precision=precision)
+    observed = []
+    real_forward = train_module.HybridLM.forward
+    saved = (torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32)
+
+    def inspect_forward(self, *args, **kwargs):
+        assert torch.is_autocast_enabled("cpu") is autocast
+        if precision == "float32":
+            assert torch.backends.cuda.matmul.allow_tf32 is False
+            assert torch.backends.cudnn.allow_tf32 is False
+        result = real_forward(self, *args, **kwargs)
+        observed.append((torch.is_grad_enabled(), result[0].dtype))
+        return result
+
+    monkeypatch.setattr(train_module.HybridLM, "forward", inspect_forward)
+    try:
+        result = run(cfg)
+        assert {grad for grad, _dtype in observed} == {True, False}
+        assert all(dtype == expected_dtype for _grad, dtype in observed)
+        metadata = result["training_precision"]
+        assert metadata["policy"]["precision"] == precision
+        assert metadata["policy"]["autocast_enabled"] is autocast
+        assert metadata["runtime_flags"] == {"cuda_matmul_allow_tf32": None, "cudnn_allow_tf32": None}
+        manifest = json.loads((variant_run_dir(cfg, "tiny-1:3") / "manifest.json").read_text())
+        assert manifest["training_precision"] == metadata
+        if precision == "float32":
+            assert (torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32) == saved
+        assert run(cfg) == result
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = saved[0]
+        torch.backends.cudnn.allow_tf32 = saved[1]
+
+
+@pytest.mark.parametrize("raises", [False, True])
+@pytest.mark.parametrize("initial_flags", [(True, True), (False, True), (True, False)])
+def test_standalone_fp32_evaluation_overrides_outer_autocast_and_restores_flags(raises, initial_flags):
+    class PrecisionModel(torch.nn.Module):
+        def forward(self, x, targets):
+            assert not torch.is_autocast_enabled("cpu")
+            assert not torch.backends.cuda.matmul.allow_tf32
+            assert not torch.backends.cudnn.allow_tf32
+            if raises:
+                raise RuntimeError("injected evaluation failure")
+            return None, torch.tensor(4.0)
+
+    model = PrecisionModel().train()
+    cfg = TrainConfig(device="cpu", precision="float32", block_size=4, batch_size=1, eval_iters=1)
+    saved = (torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32)
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = initial_flags[0]
+        torch.backends.cudnn.allow_tf32 = initial_flags[1]
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            if raises:
+                with pytest.raises(RuntimeError, match="injected evaluation failure"):
+                    estimate_loss(model, {"val": np.arange(64, dtype=np.uint16)}, cfg)
+            else:
+                assert estimate_loss(model, {"val": np.arange(64, dtype=np.uint16)}, cfg) == {"val": 4.0}
+            assert torch.is_autocast_enabled("cpu")
+        assert model.training
+        assert (torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32) == initial_flags
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = saved[0]
+        torch.backends.cudnn.allow_tf32 = saved[1]
+
+
+def test_default_precision_matches_historical_autocast_arithmetic(tmp_path, monkeypatch):
+    cfg = replace(_tiny_train_config(tmp_path), max_steps=1)
+    run(cfg)
+    updated = torch.load(variant_run_dir(cfg, "tiny-1:3") / "last.pt", weights_only=True)
+    monkeypatch.setattr(
+        train_module, "_autocast",
+        lambda current: torch.autocast(torch.device(current.device).type, dtype=torch.bfloat16),
+    )
+    legacy_cfg = replace(cfg, run_id="historical-context-control")
+    run(legacy_cfg)
+    legacy = torch.load(variant_run_dir(legacy_cfg, "tiny-1:3") / "last.pt", weights_only=True)
+    for key in ("model", "optimizer", "rng"):
+        _assert_nested_equal(updated[key], legacy[key])
+
+
+def test_default_precision_preserves_legacy_config_identity(tmp_path):
+    from dataclasses import asdict
+
+    cfg = _tiny_train_config(tmp_path)
+    legacy = asdict(cfg)
+    legacy.pop("precision")
+    assert train_module._trajectory_config_dict(legacy) == train_module._trajectory_config_dict(asdict(cfg))
+    model = train_module.load_model_config(cfg.model_config)
+    payload = train_module._signature_payload(cfg, model, {"data": 1}, {"code": 2}, {"runtime": 3})
+    expected = {**payload, "train_config": {key: value for key, value in legacy.items()
+                                           if key not in {"resume", "wandb", "wandb_project"}}}
+    assert train_module._canonical_hash(payload) == train_module._canonical_hash(expected)
+    fp32 = train_module._signature_payload(replace(cfg, precision="float32"), model,
+                                          {"data": 1}, {"code": 2}, {"runtime": 3})
+    assert fp32["train_config"]["precision"] == "float32"
+    assert train_module._canonical_hash(fp32) != train_module._canonical_hash(payload)
+
+
+@pytest.mark.parametrize("invalid", [None, True, "bf16", "float16", "FLOAT32", []])
+def test_invalid_precision_rejects_before_lock_or_artifact(tmp_path, monkeypatch, invalid):
+    monkeypatch.setattr(train_module, "RunLock", lambda _path: pytest.fail("invalid policy cannot acquire a lock"))
+    checkpoints = tmp_path / "checkpoints"
+    with pytest.raises(ValueError, match="precision must be"):
+        run(TrainConfig(precision=invalid, ckpt_dir=str(checkpoints)))
+    assert not checkpoints.exists()
+
+
+@pytest.mark.parametrize("first, changed", [("bfloat16", "float32"), ("float32", "bfloat16")])
+def test_precision_change_cannot_resume_or_rewrite_durable_run(tmp_path, first, changed):
+    cfg = replace(_tiny_train_config(tmp_path), max_steps=1, precision=first)
+    run(cfg)
+    root = variant_run_dir(cfg, "tiny-1:3")
+    before = {path.name: path.read_bytes() for path in root.iterdir()}
+    with pytest.raises(RuntimeError, match="signature|provenance|configuration"):
+        run(replace(cfg, precision=changed))
+    assert {path.name: path.read_bytes() for path in root.iterdir()} == before
+
+
+def test_fp32_metadata_cannot_be_removed_from_completed_run(tmp_path):
+    cfg = replace(_tiny_train_config(tmp_path), max_steps=1, precision="float32")
+    run(cfg)
+    root = variant_run_dir(cfg, "tiny-1:3")
+    path = root / "result.json"
+    result = json.loads(path.read_text())
+    result.pop("training_precision")
+    path.write_text(json.dumps(result))
+    before = {artifact.name: artifact.read_bytes() for artifact in root.iterdir()}
+    with pytest.raises(RuntimeError, match="precision metadata"):
+        run(cfg)
+    assert {artifact.name: artifact.read_bytes() for artifact in root.iterdir()} == before
+
+
+def test_training_cli_selects_fp32_and_rejects_unknown_policy(monkeypatch):
+    observed = []
+    monkeypatch.setattr(train_module, "run", lambda cfg: observed.append(cfg))
+    monkeypatch.setattr(train_module.sys, "argv", ["train", "--precision", "float32"])
+    train_module.main()
+    assert observed[0].precision == "float32"
+    monkeypatch.setattr(train_module.sys, "argv", ["train", "--precision", "float16"])
+    with pytest.raises(SystemExit):
+        train_module.main()
+    assert len(observed) == 1

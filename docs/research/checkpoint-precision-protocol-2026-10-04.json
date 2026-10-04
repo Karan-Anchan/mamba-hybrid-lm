@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "date": "2026-10-04",
+  "status_at_declaration": "planned_before_execution",
+  "study": "K1 trained-checkpoint continuation and precision",
+  "scope": "Read-only numerical diagnostic; random tokens are not language-quality evidence",
+  "training_run_id": "week3-700m-v1",
+  "checkpoints": [
+    {"ratio": "1:3", "path": "checkpoints/week3-700m-v1/hybrid-1_3-76f9c3a9/best.pt", "sha256": "0995d848d8538a0169151e94388660554dcf90ce93c9a5bb2fa18ae1aec0504c"},
+    {"ratio": "1:7", "path": "checkpoints/week3-700m-v1/hybrid-1_7-9a5e2bc8/best.pt", "sha256": "e3270576bd3585268d6eec59f6f01fe6227d6e6e446d8b1b284b0b429b6346df"},
+    {"ratio": "1:15", "path": "checkpoints/week3-700m-v1/hybrid-1_15-ee7b7913/best.pt", "sha256": "1ff7ad5454ade6322ddc52d28eefdc4d3c7ade0142fdcc350f139fef08d58e91"}
+  ],
+  "device": "cuda",
+  "backend": "reference",
+  "seed": 1337,
+  "batch_size": 1,
+  "chunk_size": 128,
+  "lengths": [127, 128, 129, 257],
+  "treatments": ["fp32_reference", "bf16_original", "bf16_scan_fp32", "bf16_projection_fp32", "bf16_scan_and_projection_fp32"],
+  "exploratory_treatments": ["bf16_scan_and_projection_fp32"],
+  "tolerances": {"float32": {"atol": 0.00003, "rtol": 0.0003}, "bfloat16": {"atol": 0.002, "rtol": 0.02}},
+  "precision_flags": {"float32_matmul_precision": "highest", "cuda_matmul_allow_tf32": false, "cudnn_allow_tf32": false},
+  "precision_flag_reason": "This new production-shape diagnostic explicitly disables both TF32 policies to provide an FP32 control for a prospective FP32 operational pilot. The earlier tiny-grid runtime flags remain unchanged in its original reports.",
+  "limits": ["No optimizer or checkpoint writes", "Keep model-route agreement separate from common FP32-anchor agreement", "Model cached paths use real prefix memory; direct frozen scan nonzero states are synthetic", "Current causality probes check the final token only", "Direct scan gradients do not certify full-model training gradients", "No quality, speed ranking or fused-kernel certification", "Keep all observed failures; do not change thresholds after execution"]
+}
