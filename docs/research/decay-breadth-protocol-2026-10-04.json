@@ -1,0 +1,193 @@
+{
+  "schema": 1,
+  "date": "2026-10-04",
+  "status_at_declaration": "planned_before_execution",
+  "study": "Broader FP32 decay-policy prediction, real-memory and gradient coverage",
+  "treatment_id": "fp64_cumsum_decay_coefficients",
+  "baseline_declaration": "docs/research/checkpoint-numerics-protocol-2026-10-04.json",
+  "baseline_report": "docs/research/checks/trained-numerics-2026-10-04/natural-257-seed-2027.json",
+  "baseline_sha256": "2cf3ded411ac2c2e451ea7119302b42bff2b6eb22fd7d0da6cfc9c94951d454b",
+  "decay_report": "docs/research/checks/decay-precision-2026-10-04/natural-257-seed-2027.json",
+  "decay_sha256": "a9a482f8309fb33140d0ad619c035c5b7f7c1ff74a0d2e1af598bac350cc684e",
+  "ratios": [
+    "1:3",
+    "1:7",
+    "1:15"
+  ],
+  "device": "cuda",
+  "seed": 2027,
+  "chunk_size": 128,
+  "cases": [
+    {
+      "batch_size": 1,
+      "length": 127,
+      "prefix_length": 63,
+      "gradient_check": false
+    },
+    {
+      "batch_size": 1,
+      "length": 128,
+      "prefix_length": 64,
+      "gradient_check": false
+    },
+    {
+      "batch_size": 1,
+      "length": 129,
+      "prefix_length": 64,
+      "gradient_check": false
+    },
+    {
+      "batch_size": 1,
+      "length": 257,
+      "prefix_length": 128,
+      "gradient_check": false
+    },
+    {
+      "batch_size": 2,
+      "length": 512,
+      "prefix_length": 128,
+      "gradient_check": true
+    }
+  ],
+  "precision_flags": {
+    "cuda_matmul_allow_tf32": false,
+    "cudnn_allow_tf32": false
+  },
+  "tolerances": {
+    "float32": {
+      "atol": 3e-05,
+      "rtol": 0.0003
+    },
+    "bfloat16": {
+      "atol": 0.002,
+      "rtol": 0.02
+    }
+  },
+  "inputs": "Natural validation windows chosen once per case using the private CPU seed; identical tokens/shifted targets across ratios and policies; bind all identities before model allocation",
+  "prediction_checks": [
+    "full reference versus full chunked128",
+    "full versus FP32 prefill",
+    "full versus full tokenwise",
+    "real-prefix suffix one-shot,chunk128,tokenwise and their pairwise comparisons",
+    "each treatment route versus original reference anchor"
+  ],
+  "memory_checks": "Complete FP32 state bundles, actual cloned prefix memory and final positions; use FP32 tolerance rather than the BF16 probe helper's threshold",
+  "gradient_checks": "Batch2/length512: full reference/chunked loss and every unique parameter array internally and against original reference anchor; other case gradients explicitly unexecuted",
+  "time_budget_seconds": 900,
+  "minimum_large_case_free_bytes": 8589934592,
+  "output": "docs/research/checks/decay-breadth-2026-10-04/natural-boundaries-seed-2027.json",
+  "limits": [
+    "Declared after the successful narrow full-model candidate result, before breadth execution",
+    "Counterfactual diagnostic only; no production/default policy or optimizer",
+    "Selection-pool text and one seed are not independent language-quality evidence",
+    "BF16 and fused kernels remain unexecuted",
+    "Cooperative time allowance may overshoot during an in-flight calculation",
+    "Conservative free-memory guard is not a guaranteed peak estimate; retain incomplete OOM or deadline results without reduced-shape retry",
+    "Keep unchanged thresholds and every negative result"
+  ],
+  "shared_inputs": [
+    {
+      "case_id": "b1-l127-p63",
+      "batch_size": 1,
+      "length": 127,
+      "prefix_length": 63,
+      "gradient_check": false,
+      "windows": [
+        {
+          "window": 0,
+          "start_token": 2297521,
+          "length": 127,
+          "tokens_sha256": "a5b019dcc98f2d5f534a1f83dc132878121097f64cef19f00b274fd15ccaf18d",
+          "targets_sha256": "9c688e45a526bd03e948f628b72893cc5469940c6a517ca5e55afa5e9eac8708",
+          "target_policy": "y[i] = validation[start_token+i+1]"
+        }
+      ],
+      "tokens_sha256": "a5b019dcc98f2d5f534a1f83dc132878121097f64cef19f00b274fd15ccaf18d",
+      "targets_sha256": "9c688e45a526bd03e948f628b72893cc5469940c6a517ca5e55afa5e9eac8708"
+    },
+    {
+      "case_id": "b1-l128-p64",
+      "batch_size": 1,
+      "length": 128,
+      "prefix_length": 64,
+      "gradient_check": false,
+      "windows": [
+        {
+          "window": 0,
+          "start_token": 2297865,
+          "length": 128,
+          "tokens_sha256": "6fbe5af96e63caabed6c8233b31ea61e63a5229d2aa885685b379a20dedee38f",
+          "targets_sha256": "2f8a550fe40e0d6e43eb2c46d15d2953ef3896d7f9079d1606480ab4be686f3f",
+          "target_policy": "y[i] = validation[start_token+i+1]"
+        }
+      ],
+      "tokens_sha256": "6fbe5af96e63caabed6c8233b31ea61e63a5229d2aa885685b379a20dedee38f",
+      "targets_sha256": "2f8a550fe40e0d6e43eb2c46d15d2953ef3896d7f9079d1606480ab4be686f3f"
+    },
+    {
+      "case_id": "b1-l129-p64",
+      "batch_size": 1,
+      "length": 129,
+      "prefix_length": 64,
+      "gradient_check": false,
+      "windows": [
+        {
+          "window": 0,
+          "start_token": 2298209,
+          "length": 129,
+          "tokens_sha256": "f82b56ce45a40efb248f15c339276fa082e0f0e22fd64bcad42ef3dbc5be8f0e",
+          "targets_sha256": "8da6e5a82c3fb7aa2273742caf7e156fe4926354d906803cade1931b0814184c",
+          "target_policy": "y[i] = validation[start_token+i+1]"
+        }
+      ],
+      "tokens_sha256": "f82b56ce45a40efb248f15c339276fa082e0f0e22fd64bcad42ef3dbc5be8f0e",
+      "targets_sha256": "8da6e5a82c3fb7aa2273742caf7e156fe4926354d906803cade1931b0814184c"
+    },
+    {
+      "case_id": "b1-l257-p128",
+      "batch_size": 1,
+      "length": 257,
+      "prefix_length": 128,
+      "gradient_check": false,
+      "windows": [
+        {
+          "window": 0,
+          "start_token": 2342241,
+          "length": 257,
+          "tokens_sha256": "f93bd06db8127edd86f15292d53df7c68b2333252ddc871fa44a0cf66c4d9818",
+          "targets_sha256": "1b6135f43e80589673fce4c2b3fcdd8074744ab60fb856d46637d1d9415502b9",
+          "target_policy": "y[i] = validation[start_token+i+1]"
+        }
+      ],
+      "tokens_sha256": "f93bd06db8127edd86f15292d53df7c68b2333252ddc871fa44a0cf66c4d9818",
+      "targets_sha256": "1b6135f43e80589673fce4c2b3fcdd8074744ab60fb856d46637d1d9415502b9"
+    },
+    {
+      "case_id": "b2-l512-p128",
+      "batch_size": 2,
+      "length": 512,
+      "prefix_length": 128,
+      "gradient_check": true,
+      "windows": [
+        {
+          "window": 0,
+          "start_token": 2429961,
+          "length": 512,
+          "tokens_sha256": "8f3ed3eba9175c12f2b184b63f3d867eab157fbb5b6f14a759fa534c2c0eb84b",
+          "targets_sha256": "88c2406e190e7c034f435dfd47ee384a213c7cb5225df8f22a36cc2490ce5dcf",
+          "target_policy": "y[i] = validation[start_token+i+1]"
+        },
+        {
+          "window": 1,
+          "start_token": 3825427,
+          "length": 512,
+          "tokens_sha256": "4ae99a91c5e5d102dd8a36da2c47bdc9f66bd4e4db30cdab4a0e16f16f8f45d9",
+          "targets_sha256": "8bbe71ddb8ba15b5b090755ae40f1942b34fb96780e821e3df813c05793ed606",
+          "target_policy": "y[i] = validation[start_token+i+1]"
+        }
+      ],
+      "tokens_sha256": "2105a7ec8fb2969cdb5e2956b667cbe5705381f7733cf4ec107a6f8c053e456d",
+      "targets_sha256": "c78dbeda3677be78e42cb51afb6d390c44d085fc33d3f0a6267d9d94a3064165"
+    }
+  ]
+}

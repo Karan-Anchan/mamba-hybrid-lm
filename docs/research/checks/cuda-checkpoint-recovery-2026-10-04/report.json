@@ -1,0 +1,482 @@
+{
+  "schema": 1,
+  "kind": "cuda_checkpoint_recovery_operational_smoke",
+  "date": "2026-10-04",
+  "certified": false,
+  "declaration_sha256": "a72ea30353ec86b2d9ffbb2c127a9a4653217c941547dadaccbbdd0963726158",
+  "declaration_canonical_sha256": "b94cb904cd5b592e57a5b7b4fdf99e302ce2d4a4a9846dda2695db005cd809f4",
+  "protocol": {
+    "schema": 1,
+    "version": 1,
+    "kind": "cuda_checkpoint_recovery_operational_smoke",
+    "date": "2026-10-04",
+    "status_at_declaration": "planned_before_execution",
+    "train_config": {
+      "device": "cuda",
+      "precision": "float32",
+      "scan_backend": "reference",
+      "scan_chunk_size": 128,
+      "seed": 1337,
+      "model_seed": 1337,
+      "data_seed": 1337,
+      "eval_seed": 1337,
+      "max_steps": 4,
+      "block_size": 512,
+      "batch_size": 1,
+      "grad_accum": 1,
+      "warmup_steps": 1,
+      "eval_interval": 2,
+      "eval_iters": 1,
+      "checkpoint_interval": 1,
+      "log_interval": 1,
+      "lr": 0.001,
+      "min_lr": 0.0001,
+      "weight_decay": 0.1,
+      "beta1": 0.9,
+      "beta2": 0.95,
+      "grad_clip": 1.0,
+      "grad_checkpointing": true,
+      "wandb": false,
+      "resume": true,
+      "wall_time_limit_seconds": 300.0
+    },
+    "guards": {
+      "wall_seconds": 300,
+      "min_free_cuda_bytes": 8589934592
+    },
+    "stop": {
+      "step": 2,
+      "reason": "diagnostic:after-complete-checkpoint-step-2",
+      "wrapper": "post-successful _publish_checkpoint_transaction request_stop; restored in finally"
+    },
+    "checkpoint_root": "checkpoints/operational-smoke-2026-10-04",
+    "control_run_id": "cuda-recovery-control-v1",
+    "interrupted_run_id": "cuda-recovery-resume-v1",
+    "model_config": {
+      "path": "configs/ratio_1_15.yaml",
+      "sha256": "64add5b5acd53688aa84a9258c033288565dc8de9eb93d637e5c782598614239"
+    },
+    "data": {
+      "directory": "data/openwebtext-5b",
+      "signature": "4d132a4e0887c934874f45a28a37f5a9b902cc727cb76e41fad692c0bec4b3a7",
+      "manifest_sha256": "cca2be85a7c8ca909d3adf0ccf7986570a8e0e4f2cbaf5dceba47b979b9a1802"
+    },
+    "source_sha256": {
+      "src/data/dataset.py": "03b3ddf7acc173531f0ec1fe6067463fc50c600b61e4fd48f3a7021aa6a9df93",
+      "src/data/prepare_data.py": "846aae9cd36c687105d8e3d6f675689c3f3948a64fe0fc8fc2fe31598bba13ac",
+      "src/data/train_tokenizer.py": "eab401c2575d7fac87f9685cf343f5c5be8cee01cbd1d14e93bce826caf19da9",
+      "src/eval/report.py": "bbf9ffa4323ec05cf5255c97d44933b53576d925d1b9c3fc0dd418098d2294a1",
+      "src/eval/suite.py": "d0b53b1563ebaa98f5247716c806888e68b2342338166a2c9ff1a71dc28db79f",
+      "src/eval/week5_report.py": "346dd481dcbdc7962b5e57da72f1a4ada7b583f6a1a21495729a6eb7f3b7c976",
+      "src/generation.py": "e492ea3b0d8c3b5cb2baf1b2c4a42a1af9c982d699e4ab95116d682bc1bf0b22",
+      "src/model/attention.py": "d45804c3ba668ee66a817406cb4596abd1f61ff5cbbbd944e44e145330cd84ba",
+      "src/model/block.py": "eaeae5a11c910499a075ca083294ab661911aa16b2ca54b887d1c14588c17851",
+      "src/model/config.py": "caeb8ceb9cbaaab84a1abd31588e6aa34a7bfd3f3859ac3394e6fde54b361019",
+      "src/model/inference.py": "b561e97aac89c706bce3a79d561b7cb77fd6237d6336db8300ac575dfd09dd74",
+      "src/model/lm.py": "2e93a006b9bfce06afa200d9dd9326fe882336ec1687d54d12381031b2be58c8",
+      "src/model/mamba2.py": "69d661f50e31586c361e8ee64c794a836da461d2f870fb455c19b4b2d39f00fe",
+      "src/model/mlp.py": "6f58c27eb8fe6facb2f1a99bc56485a7f4199d58e272c59394bb05e0e0825f2e",
+      "src/model/norm.py": "dff7295a2219873072c5f3f31fc8c648241afc541ba4b2ed0fa1581d35649521",
+      "src/model/scan_backend.py": "b546506ccf5fb1b34b2cfe603829f439c0c90e230ccbed92101aa61c1e2abe3f",
+      "src/serve/__init__.py": "1e79ab409a11f9837bfd7f32d16479014a8003715e5066eb29c79d9ea0ec920c",
+      "src/serve/app.py": "c636fa916dfb16c24a3140b9c4d7baae3092d0f8d3a5693249292c4dca731c6a",
+      "src/serve/registry.py": "9e5ecccc7752e920c61ffc5e5932ab6e0010d39b7474fe37a61d1f533040acb7",
+      "src/train/train.py": "e7df97023863967491deb472455a2aa917b31fe1f9c79354e1261e7b437b03b1",
+      "scripts/run_sweep.py": "84b9f7e0ad73a6b213f4e6cefc425049957409f91331568495ce91857ca9bbd5",
+      "requirements.txt": "cb526c48e2270e27b46e320b7fb2f2ba383ad48ac9375f27794f845108efc8fa",
+      "scripts/check_cuda_checkpoint_recovery.py": "88f696453524dd58f716b4e0ad30bd88ab4133db63af582cfd95a207e9839c0c"
+    },
+    "historical_checkpoints": [
+      {
+        "ratio": "1:3",
+        "path": "checkpoints/week3-700m-v1/hybrid-1_3-76f9c3a9/best.pt",
+        "sha256": "0995d848d8538a0169151e94388660554dcf90ce93c9a5bb2fa18ae1aec0504c"
+      },
+      {
+        "ratio": "1:7",
+        "path": "checkpoints/week3-700m-v1/hybrid-1_7-9a5e2bc8/best.pt",
+        "sha256": "e3270576bd3585268d6eec59f6f01fe6227d6e6e446d8b1b284b0b429b6346df"
+      },
+      {
+        "ratio": "1:15",
+        "path": "checkpoints/week3-700m-v1/hybrid-1_15-ee7b7913/best.pt",
+        "sha256": "1ff7ad5454ade6322ddc52d28eefdc4d3c7ade0142fdcc350f139fef08d58e91"
+      }
+    ],
+    "output": "docs/research/checks/cuda-checkpoint-recovery-2026-10-04/report.json"
+  },
+  "protocol_display_sanitized": false,
+  "declaration_hash_scope": "original declaration bytes/canonical contents before public display redaction",
+  "execution_status": "completed",
+  "status": "completed_with_recovery_failures",
+  "research_pilot_executed": false,
+  "backend_parity_certified": false,
+  "workflow_resource_scope": "preflight, training, restart, comparison and evidence checks; excludes final report publication",
+  "limits": [
+    "Operational stop/restart check on one new initialization, one portable backend and one shape.",
+    "No architecture/quality comparison, fused execution, forward parity approval or research-pilot result.",
+    "Same LR/token schedule across stop/resume; timing and I/O include artifact validation and publication.",
+    "Process-interruption recovery is separate from power-loss guarantees.",
+    "Cooperative deadline permits in-flight overshoot, which fails this smoke and is retained."
+  ],
+  "runtime": {
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26300-SP0",
+    "packages": {
+      "torch": "2.11.0+cu128",
+      "numpy": "2.4.6",
+      "tokenizers": "0.22.2",
+      "mamba-ssm": null,
+      "triton": null,
+      "causal-conv1d": null
+    },
+    "cuda_runtime": "12.8",
+    "gpu": "NVIDIA GeForce RTX 5070",
+    "capability": [
+      12,
+      0
+    ],
+    "deterministic_algorithms": false,
+    "training_policy": {
+      "precision": "float32",
+      "autocast_enabled": false,
+      "autocast_dtype": null,
+      "tf32_policy": "disabled"
+    },
+    "ambient_flags_outside_training": {
+      "cuda_matmul_allow_tf32": false,
+      "cudnn_allow_tf32": true
+    }
+  },
+  "initial_cuda_headroom": {
+    "free_bytes": 11571036160,
+    "total_bytes": 12792037376
+  },
+  "phases": [
+    {
+      "phase": "uninterrupted",
+      "wall_seconds": 41.84399999999732,
+      "io": {
+        "available": true,
+        "source": "Windows GetProcessIoCounters",
+        "counters": {
+          "read_operations": 32785,
+          "write_operations": 4045,
+          "other_operations": 59320,
+          "read_bytes": 32170609694,
+          "write_bytes": 3578170339,
+          "other_bytes": 2840892
+        },
+        "scope": "OS process transfer counters, including cached I/O and checks; not physical-disk bytes"
+      },
+      "headroom_before": {
+        "free_bytes": 11571036160,
+        "total_bytes": 12792037376
+      },
+      "status": "completed",
+      "peak_allocated_bytes": 1029727744,
+      "completed_steps": 4,
+      "tokens_seen": 2048,
+      "stop": null,
+      "observed_paths": {
+        "training": "torch.quadratic_ssd",
+        "prefill": null,
+        "decode": null
+      }
+    },
+    {
+      "phase": "requested_stop",
+      "wall_seconds": 22.14100000000326,
+      "io": {
+        "available": true,
+        "source": "Windows GetProcessIoCounters",
+        "counters": {
+          "read_operations": 19832,
+          "write_operations": 2250,
+          "other_operations": 8317,
+          "read_bytes": 20414652399,
+          "write_bytes": 1948847068,
+          "other_bytes": 461246
+        },
+        "scope": "OS process transfer counters, including cached I/O and checks; not physical-disk bytes"
+      },
+      "headroom_before": {
+        "free_bytes": 11489247232,
+        "total_bytes": 12792037376
+      },
+      "status": "stopped",
+      "peak_allocated_bytes": 1028116480,
+      "completed_steps": 2,
+      "tokens_seen": 1024,
+      "stop": {
+        "reason": "diagnostic:after-complete-checkpoint-step-2",
+        "elapsed_seconds": 108.875,
+        "wall_time_limit_seconds": 300.0,
+        "overshoot_seconds": 0.0,
+        "scope": "cooperative invocation wall time; in-flight work may exceed the allowance",
+        "boundary": "complete checkpoint transaction"
+      },
+      "observed_paths": {
+        "training": "torch.quadratic_ssd",
+        "prefill": null,
+        "decode": null
+      },
+      "wrapper": {
+        "wrapper_id": "post-successful _publish_checkpoint_transaction request_stop; restored in finally",
+        "stop_reason": "diagnostic:after-complete-checkpoint-step-2",
+        "original_binding": "src.train.train._publish_checkpoint_transaction",
+        "successful_steps": [
+          0,
+          1,
+          2
+        ],
+        "stop_requests": 1,
+        "restored": true
+      },
+      "last_sha256_at_stop": "70c6c44cd7de7e83e02441536569412d75963a72c54b5166bc607d482c1e178b",
+      "boundary_artifact_scope": "last.pt fingerprint at stop; superseded by successful resume"
+    },
+    {
+      "phase": "resumed",
+      "wall_seconds": 16.514999999999418,
+      "io": {
+        "available": true,
+        "source": "Windows GetProcessIoCounters",
+        "counters": {
+          "read_operations": 21469,
+          "write_operations": 1749,
+          "other_operations": 6651,
+          "read_bytes": 22146875133,
+          "write_bytes": 1515785876,
+          "other_bytes": 360460
+        },
+        "scope": "OS process transfer counters, including cached I/O and checks; not physical-disk bytes"
+      },
+      "headroom_before": {
+        "free_bytes": 11489247232,
+        "total_bytes": 12792037376
+      },
+      "status": "completed",
+      "peak_allocated_bytes": 1026800128,
+      "completed_steps": 4,
+      "tokens_seen": 2048,
+      "stop": null,
+      "observed_paths": {
+        "training": "torch.quadratic_ssd",
+        "prefill": null,
+        "decode": null
+      }
+    }
+  ],
+  "recovery_identity": {
+    "passed": false,
+    "checks": {
+      "model": {
+        "exact_equal": false,
+        "tensor_checks": 205,
+        "difference_count": 130,
+        "first_differences": [
+          "value.embed.weight",
+          "value.blocks.0.norm1.weight",
+          "value.blocks.0.mixer.in_proj.weight",
+          "value.blocks.0.mixer.conv1d.weight",
+          "value.blocks.0.mixer.conv1d.bias",
+          "value.blocks.0.mixer.out_proj.weight",
+          "value.blocks.0.norm2.weight",
+          "value.blocks.0.mlp.gate.weight",
+          "value.blocks.0.mlp.up.weight",
+          "value.blocks.0.mlp.down.weight",
+          "value.blocks.1.mixer.in_proj.weight",
+          "value.blocks.1.mixer.conv1d.weight",
+          "value.blocks.1.mixer.conv1d.bias",
+          "value.blocks.1.mixer.out_proj.weight",
+          "value.blocks.1.norm2.weight",
+          "value.blocks.1.mlp.gate.weight",
+          "value.blocks.1.mlp.up.weight",
+          "value.blocks.1.mlp.down.weight",
+          "value.blocks.2.mixer.in_proj.weight",
+          "value.blocks.2.mixer.conv1d.weight"
+        ]
+      },
+      "optimizer": {
+        "exact_equal": false,
+        "tensor_checks": 612,
+        "difference_count": 408,
+        "first_differences": [
+          "value.state.0.exp_avg",
+          "value.state.0.exp_avg_sq",
+          "value.state.1.exp_avg",
+          "value.state.1.exp_avg_sq",
+          "value.state.2.exp_avg",
+          "value.state.2.exp_avg_sq",
+          "value.state.3.exp_avg",
+          "value.state.3.exp_avg_sq",
+          "value.state.4.exp_avg",
+          "value.state.4.exp_avg_sq",
+          "value.state.5.exp_avg",
+          "value.state.5.exp_avg_sq",
+          "value.state.6.exp_avg",
+          "value.state.6.exp_avg_sq",
+          "value.state.7.exp_avg",
+          "value.state.7.exp_avg_sq",
+          "value.state.8.exp_avg",
+          "value.state.8.exp_avg_sq",
+          "value.state.9.exp_avg",
+          "value.state.9.exp_avg_sq"
+        ]
+      },
+      "rng": {
+        "exact_equal": true,
+        "tensor_checks": 4,
+        "difference_count": 0,
+        "first_differences": []
+      },
+      "completed_steps": {
+        "exact_equal": true,
+        "tensor_checks": 0,
+        "difference_count": 0,
+        "first_differences": []
+      },
+      "tokens_seen": {
+        "exact_equal": true,
+        "tensor_checks": 0,
+        "difference_count": 0,
+        "first_differences": []
+      },
+      "best_val_loss": {
+        "exact_equal": false,
+        "tensor_checks": 0,
+        "difference_count": 1,
+        "first_differences": [
+          "value"
+        ]
+      },
+      "train_batch_generator": {
+        "exact_equal": true,
+        "tensor_checks": 1,
+        "difference_count": 0,
+        "first_differences": []
+      },
+      "semantic_metrics": {
+        "exact_equal": false,
+        "tensor_checks": 0,
+        "difference_count": 2,
+        "first_differences": [
+          "value.6.val_loss",
+          "value.6.val_ppl"
+        ]
+      }
+    },
+    "timing_excluded": [
+      "train_seconds",
+      "eval_seconds",
+      "peak_vram_mb",
+      "step_seconds",
+      "tok_per_s"
+    ],
+    "scope": "same reference backend/numerical policy stop-restart identity; no backend or quality comparison"
+  },
+  "artifacts": {
+    "control": {
+      "best": {
+        "path": "checkpoints/operational-smoke-2026-10-04/cuda-recovery-control-v1/hybrid-1_15-ee7b7913/best.pt",
+        "sha256": "d114810b7f1125590cdf224218a17628bf8ac6f3ca4566d23707b76ff428926e"
+      },
+      "last": {
+        "path": "checkpoints/operational-smoke-2026-10-04/cuda-recovery-control-v1/hybrid-1_15-ee7b7913/last.pt",
+        "sha256": "7729a14cb03e6b1edc60d62efcd536b46b4db12d9c4492bf0848f66b9f46ff47"
+      },
+      "metrics": {
+        "path": "checkpoints/operational-smoke-2026-10-04/cuda-recovery-control-v1/hybrid-1_15-ee7b7913/metrics.jsonl",
+        "sha256": "d61d89ff2fd341b566898d3924d25179d805cdc54ffbc77b710e6c80bc7528ce"
+      },
+      "result": {
+        "path": "checkpoints/operational-smoke-2026-10-04/cuda-recovery-control-v1/hybrid-1_15-ee7b7913/result.json",
+        "sha256": "4a57c61976cf9a034658a0db783beed37890fbd3b48da29e88fca27b4f279384"
+      },
+      "manifest": {
+        "path": "checkpoints/operational-smoke-2026-10-04/cuda-recovery-control-v1/hybrid-1_15-ee7b7913/manifest.json",
+        "sha256": "7162c92b4e90ecf572bba64178c4bba8fcccdac29e69f443a7a815f4bd787cb0"
+      }
+    },
+    "resumed": {
+      "best": {
+        "path": "checkpoints/operational-smoke-2026-10-04/cuda-recovery-resume-v1/hybrid-1_15-ee7b7913/best.pt",
+        "sha256": "e391746fcec5b622c033d0179bc6c39566ed88d46089d1cb35facc50963e3f6f"
+      },
+      "last": {
+        "path": "checkpoints/operational-smoke-2026-10-04/cuda-recovery-resume-v1/hybrid-1_15-ee7b7913/last.pt",
+        "sha256": "0597b2dec0f67e71e6c0cfbdc57d7cfb0a43b778452263db510229e976c9cd87"
+      },
+      "metrics": {
+        "path": "checkpoints/operational-smoke-2026-10-04/cuda-recovery-resume-v1/hybrid-1_15-ee7b7913/metrics.jsonl",
+        "sha256": "2cb51f5123fdf46b7c8c2bba28753966535684880f7da9bfbdc895071d55321a"
+      },
+      "result": {
+        "path": "checkpoints/operational-smoke-2026-10-04/cuda-recovery-resume-v1/hybrid-1_15-ee7b7913/result.json",
+        "sha256": "f58d00e47cf44886c6a5f7e92cc00bac11504b3c4fd993e2c50369085292244f"
+      },
+      "manifest": {
+        "path": "checkpoints/operational-smoke-2026-10-04/cuda-recovery-resume-v1/hybrid-1_15-ee7b7913/manifest.json",
+        "sha256": "6174dd43e9a21f8498c5816a88d11363377ed15488a3c7fa42c264b7fa84ba0d"
+      }
+    }
+  },
+  "training_provenance": {
+    "control": {
+      "signature": "021deffc9c36520716314f40fe43bdf4f6c10fb0da13508fdffcfabffebe8ab0",
+      "source_fingerprint": "933f82ea3b48c6b1478957bae76ece0bed29f62bd70a3147760b730099c9ec53",
+      "git": {
+        "commit": "b3750dcdafc166675820190a497190feb29a6581",
+        "dirty": true
+      }
+    },
+    "resumed": {
+      "signature": "e706ff592f3dc7630f55c2a38bf5a6ebb002026866f1ee537ac55f0fd3bbb28c",
+      "source_fingerprint": "933f82ea3b48c6b1478957bae76ece0bed29f62bd70a3147760b730099c9ec53",
+      "git": {
+        "commit": "b3750dcdafc166675820190a497190feb29a6581",
+        "dirty": true
+      }
+    }
+  },
+  "historical_bytes_unchanged": true,
+  "historical_preservation": {
+    "all_bytes_unchanged": true,
+    "checks": [
+      {
+        "path": "checkpoints/week3-700m-v1/hybrid-1_3-76f9c3a9/best.pt",
+        "expected_sha256": "0995d848d8538a0169151e94388660554dcf90ce93c9a5bb2fa18ae1aec0504c",
+        "actual_sha256": "0995d848d8538a0169151e94388660554dcf90ce93c9a5bb2fa18ae1aec0504c",
+        "bytes_unchanged": true
+      },
+      {
+        "path": "checkpoints/week3-700m-v1/hybrid-1_7-9a5e2bc8/best.pt",
+        "expected_sha256": "e3270576bd3585268d6eec59f6f01fe6227d6e6e446d8b1b284b0b429b6346df",
+        "actual_sha256": "e3270576bd3585268d6eec59f6f01fe6227d6e6e446d8b1b284b0b429b6346df",
+        "bytes_unchanged": true
+      },
+      {
+        "path": "checkpoints/week3-700m-v1/hybrid-1_15-ee7b7913/best.pt",
+        "expected_sha256": "1ff7ad5454ade6322ddc52d28eefdc4d3c7ade0142fdcc350f139fef08d58e91",
+        "actual_sha256": "1ff7ad5454ade6322ddc52d28eefdc4d3c7ade0142fdcc350f139fef08d58e91",
+        "bytes_unchanged": true
+      }
+    ]
+  },
+  "workflow_wall_seconds": 157.15600000000268,
+  "wall_overshoot_seconds": 0.0,
+  "workflow_io": {
+    "available": true,
+    "source": "Windows GetProcessIoCounters",
+    "counters": {
+      "read_operations": 170069,
+      "write_operations": 8045,
+      "other_operations": 85923,
+      "read_bytes": 174376193024,
+      "write_bytes": 7042803349,
+      "other_bytes": 4212912
+    },
+    "scope": "OS process transfer counters, including cached I/O and checks; not physical-disk bytes"
+  }
+}

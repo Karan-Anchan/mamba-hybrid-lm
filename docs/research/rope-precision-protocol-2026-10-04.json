@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "date": "2026-10-04",
+  "status_at_declaration": "planned_before_execution",
+  "study": "RoPE-only counterfactual for BF16 full versus cached attention",
+  "baseline_report": "docs/research/checks/trained-numerics-2026-10-04/natural-257-seed-2027.json",
+  "baseline_sha256": "2cf3ded411ac2c2e451ea7119302b42bff2b6eb22fd7d0da6cfc9c94951d454b",
+  "ratios": ["1:3", "1:7", "1:15"],
+  "device": "cuda",
+  "seed": 2027,
+  "length": 257,
+  "prefix_length": 128,
+  "start_token": 2342241,
+  "tokens_sha256": "f93bd06db8127edd86f15292d53df7c68b2333252ddc871fa44a0cf66c4d9818",
+  "targets_sha256": "1b6135f43e80589673fce4c2b3fcdd8074744ab60fb856d46637d1d9415502b9",
+  "batch_size": 1,
+  "chunk_size": 128,
+  "precision_flags": {"cuda_matmul_allow_tf32": false, "cudnn_allow_tf32": false},
+  "tolerances": {"float32": {"atol": 0.00003, "rtol": 0.0003}, "bfloat16": {"atol": 0.002, "rtol": 0.02}},
+  "policies": {
+    "original": "Only cached attention rounds FP32 rotation tables to the query dtype",
+    "shared_fp32": "Both routes rotate in FP32, then explicitly cast query/key back to the original dtype",
+    "shared_bf16": "Both routes round rotation tables to BF16 before rotation"
+  },
+  "frozen_probe": "Identical actual pre-rotation query/key operands and tables; report post-rotation and post-cast comparisons separately",
+  "full_model": "BF16 full/prefill/tokenwise/real-prefix continuation and memory comparisons; common unchanged FP32 anchor and descriptive true-target loss",
+  "output": "docs/research/checks/rope-precision-2026-10-04/natural-257-seed-2027.json",
+  "limits": ["Temporary instance-scoped treatments; restore hooks and forwards even on failure", "Shared FP32 includes an explicit final cast and is a treatment, not identical historical full-path arithmetic", "A BF16 rotation inconsistency cannot explain the separate FP32 scan disagreement", "No production defaults, checkpoint weights, thresholds or training trajectories change", "Selection-pool window is diagnostic only; no quality-equivalence margin"]
+}

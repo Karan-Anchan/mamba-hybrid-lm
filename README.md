@@ -321,7 +321,7 @@ Research foundations and beginner walkthroughs are recorded in [the implementati
 
 All three historical checkpoints passed a short FP32 CUDA compatibility check on the RTX 5070. This is not a new language-quality evaluation. Run the test command above to verify the current checkout; recorded checks and their scope are linked from the implementation record.
 
-Full-suite result on 4 October 2026: **451 passed, 1 skipped** in 29.03 seconds, including CUDA tests on the RTX 5070. The existing file-symlink test is skipped in this Windows context.
+Latest full-suite result on 4 October 2026: **870 passed, 1 skipped** in 168.36 seconds, including CUDA tests on the RTX 5070. The existing file-symlink test is skipped in this Windows context. Passing software tests does not erase the separately recorded numerical or CUDA exact-recovery failures.
 
 ## Research follow-up
 
@@ -332,6 +332,10 @@ The [validated summary](docs/research/precision-summary-2026-10-04.json) and [si
 The [trained-checkpoint follow-up](docs/research/CHECKPOINT_PRECISION_STUDY.md) repeats the checks at the actual model shapes. None of the BF16 treatments passes internal agreement across the four tested lengths. A shared natural-text window adds whole-model FP32 gradient checks: all 588 unique parameter-tensor comparisons pass, while the 1:15 forward predictions still exceed the unchanged tolerance. Forward outputs, gradients and descriptive next-token probability effects remain separate results.
 
 Training and sweeps now accept `--precision float32` as an explicitly identified experiment with BF16 autocast and TF32 disabled. Historical BF16 remains the default. The [five-arm resource pilot](docs/research/checks/fp32-resource-pilot-plan-2026-10-04.json) includes pure attention, pure Mamba and all three hybrids, but remains unexecuted at the unresolved numerical gate. No pilot quality or speed values are reported.
+
+The [layer isolation and recovery study](docs/research/NUMERICAL_ISOLATION_STUDY.md) locates the selected 1:15 threshold violation at one final score, follows real layer inputs and memory, and replays frozen scans against an independent FP64 recurrence. A named FP64 cumulative-decay treatment passes full forward checks in all 15 declared trained-model/shape cases, but three cached 1:15 cases still fail. Matching attention position-table precision alone also leaves the complete BF16 failures unresolved. The [validated breadth summary](docs/research/decay-breadth-summary-2026-10-04.json) retains every endpoint and unchanged tolerance; the treatment remains diagnostic.
+
+Checkpoint publication now stages best/latest/metrics together, records a write-ahead journal and recovers a complete generation. Sixty-four CPU interruption/stopping tests pass. A [separate four-update CUDA smoke](docs/research/checks/cuda-checkpoint-recovery-2026-10-04/report.json) stops durably at update two and resumes to four within its 300-second allowance, but final model/optimizer tensors fail exact equality. Random state and progress counters agree. Deterministic algorithms were disabled; this result does not isolate the cause. The research pilot remains prepared until numerical and CUDA recovery gates are resolved.
 
 ## Roadmap
 

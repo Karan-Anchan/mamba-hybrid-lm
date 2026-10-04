@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "kind": "next_sequence_regression_verification",
+  "date": "2026-10-04",
+  "execution_status": "completed",
+  "certified": false,
+  "regression": {
+    "passed": 870,
+    "total": 871,
+    "skipped": 1,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 168.285,
+    "junit_sha256": "78b08ee5ef0734476f7eeb82dbb447162d1a7e070c0a514b3b34ea8eccdf2f1e",
+    "scope": "Full project suite, including CUDA; one existing Windows file-symlink skip"
+  },
+  "source_sha256": {
+    "src/train/train.py": "e7df97023863967491deb472455a2aa917b31fe1f9c79354e1261e7b437b03b1",
+    "scripts/run_sweep.py": "84b9f7e0ad73a6b213f4e6cefc425049957409f91331568495ce91857ca9bbd5",
+    "scripts/check_cuda_checkpoint_recovery.py": "88f696453524dd58f716b4e0ad30bd88ab4133db63af582cfd95a207e9839c0c",
+    "scripts/isolate_checkpoint_numerics.py": "58648beaa4b8264003bcbd7045523c94afc913a137a283e46b09e40926b9d738",
+    "scripts/study_rope_precision.py": "f4a7b90cf61443d91ea45de6ebfbb29563a55d1f2304931012e3236ee4fc9ef2",
+    "scripts/study_decay_precision.py": "a7f9408702c9b3611fcde70038ab32b3ad04500217cb3a92edca9350de4bc7af",
+    "scripts/check_decay_breadth.py": "bb2f3d706272991718a77484123b4773fb11e7401923104085d4c3432364d6d1",
+    "scripts/summarize_numerical_isolation.py": "5224051701972cdbc6175973f17e45ab9d2c6b86ee23e0e00159b7094cf741da",
+    "scripts/summarize_rope_precision.py": "f1df30367597e692e861fc0c7f7460e656f525898825e6da688ac1427b319dcf",
+    "scripts/summarize_decay_precision.py": "987f4d173dfc58470330c03f781b24360434d36c263151417c9056d3b0beb86e",
+    "scripts/summarize_decay_breadth.py": "9e890ee1f7238ef667e868111d0c5696a8eaa265f0ee7869987a703a221402df"
+  },
+  "limits": [
+    "Software regression success does not certify failed diagnostic endpoints.",
+    "No fused kernel or five-arm research pilot executed.",
+    "Historical checkpoints and numerical thresholds preserved."
+  ]
+}
