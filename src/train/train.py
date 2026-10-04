@@ -13,21 +13,27 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import math
 import os
 import platform
 import random
 import re
+import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
+import uuid
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from importlib import metadata as importlib_metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -43,6 +49,9 @@ MANIFEST_SCHEMA = 1
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _STREAM_SEED_OFFSETS = {"train": 0, "eval_train": 1, "eval_val": 2}
 ARTIFACT_FILES = {"best": "best.pt", "last": "last.pt", "metrics": "metrics.jsonl", "result": "result.json"}
+_CHECKPOINT_JOURNAL = ".checkpoint-transaction.json"
+_CHECKPOINT_STORE = ".checkpoint-transactions"
+_TRANSACTION_FILES = {"best": "best.pt", "last": "last.pt", "metrics": "metrics.jsonl"}
 _WINDOWS_RESERVED_NAMES = {
     "CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10)),
 }
@@ -84,8 +93,86 @@ class TrainConfig:
     scan_backend: str = "reference"
     scan_chunk_size: int = 128
     precision: str = "bfloat16"
+    # Invocation wall allowance, not a different LR/token schedule. None keeps legacy identity.
+    wall_time_limit_seconds: float | None = None
     wandb: bool = False
     wandb_project: str = "mamba-hybrid-lm"
+
+
+class TrainingStopControl:
+    """A shared invocation deadline/stop request; work finishes at a durable boundary."""
+
+    def __init__(self, wall_time_limit_seconds: float | None = None, *, clock: Callable[[], float] = time.monotonic):
+        _validate_wall_limit(wall_time_limit_seconds)
+        self.wall_time_limit_seconds = wall_time_limit_seconds
+        self.clock = clock
+        self.started = clock()
+        self.requested = threading.Event()
+        self.request_reason = "requested"
+
+    def request_stop(self, reason: str = "requested") -> None:
+        if not self.requested.is_set():
+            self.request_reason = reason
+            self.requested.set()
+
+    def reason(self) -> str | None:
+        if self.requested.is_set():
+            return self.request_reason
+        if self.wall_time_limit_seconds is not None and self.clock() - self.started >= self.wall_time_limit_seconds:
+            return "wall_time_limit"
+        return None
+
+    def snapshot(self) -> dict[str, Any]:
+        elapsed = max(0.0, self.clock() - self.started)
+        return {
+            "reason": self.reason(), "elapsed_seconds": elapsed,
+            "wall_time_limit_seconds": self.wall_time_limit_seconds,
+            "overshoot_seconds": max(0.0, elapsed - self.wall_time_limit_seconds)
+            if self.wall_time_limit_seconds is not None else 0.0,
+            "scope": "cooperative invocation wall time; in-flight work may exceed the allowance",
+        }
+
+
+_ACTIVE_STOP_CONTROL: ContextVar[TrainingStopControl | None] = ContextVar("training_stop_control", default=None)
+
+
+def current_training_stop_control() -> TrainingStopControl | None:
+    return _ACTIVE_STOP_CONTROL.get()
+
+
+@contextmanager
+def training_stop_scope(control: TrainingStopControl):
+    """Share one deadline across sequential arms without changing the numerical config."""
+    token = _ACTIVE_STOP_CONTROL.set(control)
+    try:
+        yield
+    finally:
+        _ACTIVE_STOP_CONTROL.reset(token)
+
+
+@contextmanager
+def cooperative_stop_signals(control: TrainingStopControl):
+    """CLI signals request recovery-safe stopping; never promise to kill a GPU operation."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = {}
+    try:
+        for name in ("SIGINT", "SIGTERM"):
+            signum = getattr(signal, name, None)
+            if signum is not None:
+                previous[signum] = signal.getsignal(signum)
+                signal.signal(signum, lambda received, _frame: control.request_stop(f"signal:{signal.Signals(received).name}"))
+        yield
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+
+
+def _validate_wall_limit(value: Any) -> None:
+    if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                              or not math.isfinite(value) or value <= 0):
+        raise ValueError("wall_time_limit_seconds must be a finite positive number or None")
 
 
 def utc_now() -> str:
@@ -297,7 +384,7 @@ class MetricsWriter:
             os.fsync(handle.fileno())
 
 
-def reconcile_metrics(path: Path, completed_steps: int) -> None:
+def reconcile_metrics(path: Path, completed_steps: int, *, cfg: TrainConfig | None = None) -> None:
     """Drop partial/future metric rows that were written after the last durable checkpoint."""
     if not path.exists():
         return
@@ -312,7 +399,12 @@ def reconcile_metrics(path: Path, completed_steps: int) -> None:
             break
         if int(record["step"]) <= completed_steps:
             kept.append(json.dumps(record, sort_keys=True, allow_nan=False))
-    atomic_write_text(path, "".join(f"{line}\n" for line in kept))
+    contents = "".join(f"{line}\n" for line in kept)
+    if cfg is not None:
+        # A torn final row is only disposable when ALL required durable events remain.
+        # Validate in memory before rewriting, preserving evidence on ordinary corruption.
+        _validate_metrics(path, cfg, completed_steps=completed_steps, contents=contents)
+    atomic_write_text(path, contents)
 
 
 def _canonical_hash(value: Any) -> str:
@@ -534,6 +626,8 @@ def _trajectory_config_dict(value: dict[str, Any]) -> dict[str, Any]:
         filtered.pop(key, None)
     if filtered.get("precision", "bfloat16") == "bfloat16":
         filtered.pop("precision", None)
+    if filtered.get("wall_time_limit_seconds") is None:
+        filtered.pop("wall_time_limit_seconds", None)
     return filtered
 
 
@@ -605,11 +699,13 @@ def _validate_best_state(
         raise RuntimeError("best checkpoint must remain distinct from resumable training state")
 
 
-def _validate_metrics(path: Path, cfg: TrainConfig) -> None:
+def _validate_metrics(path: Path, cfg: TrainConfig, *, completed_steps: int | None = None,
+                      contents: str | None = None) -> None:
     if not path.is_file():
         raise RuntimeError(f"required metrics artifact is missing: {path}")
     expected_events: list[tuple[str, int]] = [("eval", 0)]
-    for step in range(1, cfg.max_steps + 1):
+    through = cfg.max_steps if completed_steps is None else completed_steps
+    for step in range(1, through + 1):
         expected_events.append(("train", step))
         if step % cfg.eval_interval == 0 or step == cfg.max_steps:
             expected_events.append(("eval", step))
@@ -617,7 +713,7 @@ def _validate_metrics(path: Path, cfg: TrainConfig) -> None:
     eval_fields = {"event", "step", "tokens_seen", "train_loss", "val_loss", "val_ppl", "lr"}
     seen_events = 0
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        with (path.open("r", encoding="utf-8") if contents is None else io.StringIO(contents)) as handle:
             for line_no, line in enumerate(handle, start=1):
                 record = json.loads(line, parse_constant=_reject_json_constant)
                 if not isinstance(record, dict) or record.get("event") not in {"train", "eval"}:
@@ -656,6 +752,221 @@ def _validate_metrics(path: Path, cfg: TrainConfig) -> None:
         raise RuntimeError(f"metrics artifact is unreadable or non-finite: {path}") from exc
     if seen_events != len(expected_events):
         raise RuntimeError("metrics artifact does not describe a complete training trajectory")
+
+
+def _transaction_path(run_dir: Path, directory: str, filename: str) -> Path:
+    """Allow only our fixed private filenames, with no symlink/path escape during recovery."""
+    if (not isinstance(directory, str)
+            or re.fullmatch(r"\.checkpoint-transactions/tx-[0-9a-f]{32}", directory) is None
+            or filename not in {f"{kind}-{name}" for kind in ("previous", "next") for name in _TRANSACTION_FILES.values()}):
+        raise RuntimeError("unsafe checkpoint transaction path")
+    root = run_dir.resolve()
+    path = run_dir / directory / filename
+    if any(part.is_symlink() for part in (run_dir / _CHECKPOINT_STORE, path.parent, path)):
+        raise RuntimeError("checkpoint transaction cannot use symlinks")
+    if not path.resolve().is_relative_to(root):
+        raise RuntimeError("checkpoint transaction escapes its locked run directory")
+    return path
+
+
+def _atomic_snapshot(source: Path, destination: Path, *, hardlink: bool = False) -> None:
+    """Immutable checkpoint links survive replacement; appendable metrics always use a copy."""
+    if source.is_symlink() or destination.is_symlink():
+        raise RuntimeError("checkpoint transaction cannot snapshot symlinks")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp = destination.with_name(f".{destination.name}.tmp")
+    try:
+        if temp.is_symlink():
+            raise RuntimeError("checkpoint transaction temporary file cannot be a symlink")
+        # A killed publisher may have left a hard link here. Never truncate that link:
+        # it shares an inode with an immutable recovery snapshot.
+        temp.unlink(missing_ok=True)
+        if hardlink:
+            try:
+                os.link(source, temp)
+            except OSError:
+                shutil.copyfile(source, temp)
+        else:
+            shutil.copyfile(source, temp)
+        with temp.open("rb+") as handle:
+            os.fsync(handle.fileno())
+        os.replace(temp, destination)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def _metrics_prefix(path: Path, step: int | None) -> str:
+    if step is None or not path.exists():
+        return ""
+    records = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        record = json.loads(line, parse_constant=_reject_json_constant)
+        if record["step"] <= step:
+            records.append(json.dumps(record, sort_keys=True, allow_nan=False) + "\n")
+    return "".join(records)
+
+
+def _clean_inert_transaction_staging(run_dir: Path) -> None:
+    """Discard only allowlisted unpublished leftovers, after run provenance is verified."""
+    if (run_dir / _CHECKPOINT_JOURNAL).exists():
+        raise RuntimeError("pending checkpoint transaction must be recovered before staging another")
+    store = run_dir / _CHECKPOINT_STORE
+    if not store.exists():
+        return
+    if store.is_symlink() or not store.resolve().is_relative_to(run_dir.resolve()):
+        raise RuntimeError("unsafe checkpoint transaction staging directory")
+    names = {f"{kind}-{name}" for kind in ("previous", "next") for name in _TRANSACTION_FILES.values()}
+    allowed = names | {f".{name}.tmp" for name in names}
+    removable = []
+    for folder in store.iterdir():
+        if re.fullmatch(r"tx-[0-9a-f]{32}", folder.name) is None:
+            continue
+        _transaction_path(run_dir, f"{_CHECKPOINT_STORE}/{folder.name}", "next-last.pt")
+        entries = list(folder.iterdir())
+        if any(entry.name not in allowed for entry in entries):
+            continue  # Never delete unknown files even in the private staging area.
+        if any(entry.is_symlink() or not entry.is_file()
+               or not entry.resolve().is_relative_to(run_dir.resolve()) for entry in entries):
+            raise RuntimeError("unsafe unpublished checkpoint staging entry")
+        removable.append((folder, entries))
+    # Validate all candidate paths before touching any of them; do not use recursive deletion.
+    for folder, entries in removable:
+        for entry in entries:
+            entry.unlink()
+        folder.rmdir()
+    try:
+        store.rmdir()
+    except OSError:
+        pass
+
+
+def _remove_transaction(run_dir: Path, directory: str) -> None:
+    paths = [_transaction_path(run_dir, directory, f"{kind}-{name}")
+             for kind in ("previous", "next") for name in _TRANSACTION_FILES.values()]
+    # Remove the journal first: interruption during cleanup then leaves only inert private files.
+    (run_dir / _CHECKPOINT_JOURNAL).unlink(missing_ok=True)
+    for path in paths:
+        path.unlink(missing_ok=True)
+    folder = run_dir / directory
+    try:
+        folder.rmdir()
+        folder.parent.rmdir()
+    except OSError:
+        pass  # An interrupted preparation can leave an unrelated inert staging directory.
+
+
+def _validate_transaction(journal: dict, run_dir: Path, cfg: TrainConfig, mcfg: ModelConfig, signature: str) -> None:
+    if (not isinstance(journal, dict) or journal.get("schema") != 1 or journal.get("signature") != signature
+            or journal.get("phase") not in {"pending", "committed"}
+            or journal.get("path_scope") != "run-directory-relative"):
+        raise RuntimeError("checkpoint transaction signature/schema/phase differs from this run")
+    directory = journal.get("directory")
+    for kind in ("previous", "next"):
+        entries = journal.get(kind)
+        if not isinstance(entries, dict) or set(entries) != set(_TRANSACTION_FILES):
+            raise RuntimeError("checkpoint transaction has an invalid artifact registry")
+        step = journal.get(f"{kind}_step")
+        if step is None and kind == "previous":
+            if any(value is not None for value in entries.values()):
+                raise RuntimeError("absent baseline transaction must have no previous artifacts")
+            # Validate the directory even when all previous entries are absent.
+            _transaction_path(run_dir, directory, "previous-last.pt")
+            continue
+        if isinstance(step, bool) or not isinstance(step, int) or not 0 <= step <= cfg.max_steps:
+            raise RuntimeError("checkpoint transaction has an invalid step")
+        for label, entry in entries.items():
+            expected = f"{kind}-{_TRANSACTION_FILES[label]}"
+            if (not isinstance(entry, dict) or set(entry) != {"file", "sha256"} or entry["file"] != expected
+                    or not isinstance(entry["sha256"], str) or re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) is None):
+                raise RuntimeError("checkpoint transaction has an invalid file/hash")
+            path = _transaction_path(run_dir, directory, entry["file"])
+            if not path.is_file() or _file_sha256(path) != entry["sha256"]:
+                raise RuntimeError("checkpoint transaction snapshot is missing or failed its checksum")
+        last = _safe_load_checkpoint(_transaction_path(run_dir, directory, entries["last"]["file"]), "transaction last")
+        _validate_last_state(last, cfg, mcfg, signature, require_complete=False)
+        if last["completed_steps"] != step:
+            raise RuntimeError("checkpoint transaction step differs from saved progress")
+        best = _safe_load_checkpoint(_transaction_path(run_dir, directory, entries["best"]["file"]), "transaction best")
+        _validate_best_state(best, mcfg, signature, last, cfg.max_steps)
+        _validate_metrics(_transaction_path(run_dir, directory, entries["metrics"]["file"]), cfg, completed_steps=step)
+    if journal["previous_step"] is not None and journal["next_step"] < journal["previous_step"]:
+        raise RuntimeError("checkpoint transaction would move progress backwards")
+    if journal["previous_step"] is None and journal["next_step"] != 0:
+        raise RuntimeError("absent checkpoint transaction baseline is only valid at step zero")
+    for name in _TRANSACTION_FILES.values():
+        public = run_dir / name
+        if public.is_symlink() or not public.resolve().is_relative_to(run_dir.resolve()):
+            raise RuntimeError("unsafe public checkpoint transaction destination")
+
+
+def _recover_checkpoint_transaction(run_dir: Path, cfg: TrainConfig, mcfg: ModelConfig, signature: str) -> bool:
+    """Recover only a verified in-flight publication, never unrelated artifact corruption."""
+    path = run_dir / _CHECKPOINT_JOURNAL
+    if not path.exists():
+        return False
+    if path.is_symlink():
+        raise RuntimeError("checkpoint transaction journal cannot be a symlink")
+    journal = read_json(path)
+    _validate_transaction(journal, run_dir, cfg, mcfg, signature)
+    selected = "next" if journal["phase"] == "committed" else "previous"
+    # Snapshot files stay intact throughout recovery, so interruption here is repeatable.
+    for label, name in _TRANSACTION_FILES.items():
+        entry = journal[selected][label]
+        if entry is None:
+            (run_dir / name).unlink(missing_ok=True)
+        else:
+            _atomic_snapshot(_transaction_path(run_dir, journal["directory"], entry["file"]),
+                             run_dir / name, hardlink=label != "metrics")
+    _remove_transaction(run_dir, journal["directory"])
+    return True
+
+
+def _publish_checkpoint_transaction(run_dir: Path, cfg: TrainConfig, mcfg: ModelConfig, signature: str,
+                                    state: dict, best: dict | None, evaluation: dict | None,
+                                    previous_step: int | None) -> None:
+    """A fsynced write-ahead journal makes best/latest/metrics one recoverable generation.
+
+    This handles process interruption. Filesystem/power-loss durability across directory
+    operations is platform-dependent and is not promised by this protocol.
+    """
+    _clean_inert_transaction_staging(run_dir)
+    directory = f"{_CHECKPOINT_STORE}/tx-{uuid.uuid4().hex}"
+    journal = {"schema": 1, "signature": signature, "phase": "pending", "path_scope": "run-directory-relative",
+               "directory": directory, "previous_step": previous_step, "next_step": state["completed_steps"],
+               "previous": {}, "next": {}}
+    for label, name in _TRANSACTION_FILES.items():
+        prior = _transaction_path(run_dir, directory, f"previous-{name}")
+        future = _transaction_path(run_dir, directory, f"next-{name}")
+        public = run_dir / name
+        if previous_step is None:
+            journal["previous"][label] = None
+        else:
+            if label == "metrics":
+                atomic_write_text(prior, _metrics_prefix(public, previous_step))
+            else:
+                _atomic_snapshot(public, prior, hardlink=True)
+            journal["previous"][label] = {"file": prior.name, "sha256": _file_sha256(prior)}
+        if label == "last":
+            atomic_torch_save(state, future)
+        elif label == "best":
+            if best is None:
+                _atomic_snapshot(public, future, hardlink=True)
+            else:
+                atomic_torch_save(best, future)
+        else:
+            contents = public.read_text(encoding="utf-8") if public.exists() else ""
+            if evaluation is not None:
+                contents += json.dumps(evaluation, sort_keys=True, allow_nan=False) + "\n"
+            atomic_write_text(future, contents)
+        journal["next"][label] = {"file": future.name, "sha256": _file_sha256(future)}
+    _validate_transaction(journal, run_dir, cfg, mcfg, signature)
+    atomic_write_json(run_dir / _CHECKPOINT_JOURNAL, journal)
+    for label, name in _TRANSACTION_FILES.items():
+        _atomic_snapshot(_transaction_path(run_dir, directory, journal["next"][label]["file"]),
+                         run_dir / name, hardlink=label != "metrics")
+    journal["phase"] = "committed"
+    atomic_write_json(run_dir / _CHECKPOINT_JOURNAL, journal)
+    _remove_transaction(run_dir, directory)
 
 
 def _validate_completed_run(
@@ -794,6 +1105,7 @@ class RunLock:
 
 def _validate_intervals(cfg: TrainConfig) -> None:
     precision_policy(cfg.precision)
+    _validate_wall_limit(cfg.wall_time_limit_seconds)
     for name in (
         "eval_interval", "eval_iters", "log_interval", "checkpoint_interval",
         "batch_size", "grad_accum", "block_size",
@@ -825,9 +1137,12 @@ def _validate_intervals(cfg: TrainConfig) -> None:
             raise ValueError(f"{name} must be an integer between 0 and 2^32 - 1")
 
 
-def run(cfg: TrainConfig) -> dict[str, Any]:
+def run(cfg: TrainConfig, *, stop_control: TrainingStopControl | None = None) -> dict[str, Any]:
     """Train, resume, or skip one variant and return its completed headline metrics."""
     _validate_intervals(cfg)
+    control = stop_control or _ACTIVE_STOP_CONTROL.get() or TrainingStopControl(cfg.wall_time_limit_seconds)
+    if control.wall_time_limit_seconds != cfg.wall_time_limit_seconds:
+        raise ValueError("shared stop controller wall policy differs from the signed training config")
     # Resolve optional engines before creating a run directory or allocating model weights. An
     # unavailable fused request fails explicitly and cannot be relabeled as a portable run.
     resolve_scan_backend(cfg.scan_backend, cfg.scan_chunk_size)
@@ -837,10 +1152,10 @@ def run(cfg: TrainConfig) -> dict[str, Any]:
     run_dir = variant_run_dir(cfg, mcfg.name)
     with RunLock(run_dir / ".run.lock"):
         with _precision_runtime(cfg):
-            return _run_locked(cfg, mcfg, run_dir)
+            return _run_locked(cfg, mcfg, run_dir, control)
 
 
-def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str, Any]:
+def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path, control: TrainingStopControl) -> dict[str, Any]:
     manifest_path = run_dir / "manifest.json"
     result_path = run_dir / "result.json"
     last_path = run_dir / "last.pt"
@@ -859,6 +1174,16 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
     manifest_on_disk = read_json(manifest_path) if manifest_path.exists() else None
     if manifest_on_disk is not None and not isinstance(manifest_on_disk, dict):
         raise RuntimeError(f"run manifest must be a JSON object: {manifest_path}")
+    # Check provenance BEFORE any recovery writes. A journal never authorizes another run/code.
+    if manifest_on_disk is not None:
+        if (manifest_on_disk.get("signature") != signature or manifest_on_disk.get("data") != data_provenance
+                or manifest_on_disk.get("code") != code_provenance or manifest_on_disk.get("runtime") != runtime_provenance):
+            raise RuntimeError(f"run configuration differs from existing manifest (provenance/signature mismatch) in {run_dir}")
+        _validate_precision_metadata(manifest_on_disk, cfg)
+    if cfg.resume and (run_dir / _CHECKPOINT_JOURNAL).exists():
+        if manifest_on_disk is None or manifest_on_disk.get("status") == "completed":
+            raise RuntimeError("checkpoint transaction cannot repair an absent or completed manifest")
+        _recover_checkpoint_transaction(run_dir, cfg, mcfg, signature)
     if manifest_on_disk is not None and manifest_on_disk.get("status") == "completed":
         if not cfg.resume:
             raise FileExistsError(f"refusing to overwrite completed run directory: {run_dir}")
@@ -951,10 +1276,16 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
         train_seconds = float(state["train_seconds"])
         eval_seconds = float(state["eval_seconds"])
         prior_peak_vram_mb = float(state["peak_vram_mb"])
-        reconcile_metrics(metrics_path, completed_steps)
+        reconcile_metrics(metrics_path, completed_steps, cfg=cfg)
         print(f"resume: {cfg.run_id}/{mcfg.name} from {completed_steps}/{cfg.max_steps} steps")
     elif metrics_path.exists() and metrics_path.stat().st_size > 0:
         raise RuntimeError(f"cannot resume progress metrics without last checkpoint: {metrics_path}")
+    durable_step = completed_steps if last_path.exists() else None
+    pending_best = None
+    pending_evaluation = None
+    if manifest.get("status") == "stopped":
+        manifest.update({"status": "running", "updated_at": utc_now(), "resumed_at": utc_now()})
+        atomic_write_json(manifest_path, manifest)
 
     wb = None
     if cfg.wandb:
@@ -973,14 +1304,19 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
         return max(prior_peak_vram_mb, current)
 
     def save_last() -> None:
+        nonlocal durable_step, pending_best, pending_evaluation
         state = _checkpoint_state(
             model, optim, cfg, mcfg, signature, completed_steps, tokens_seen, best_val,
             train_seconds, eval_seconds, observed_peak_vram_mb(), train_generator,
         )
-        atomic_torch_save(state, last_path)
+        _publish_checkpoint_transaction(run_dir, cfg, mcfg, signature, state,
+                                        pending_best, pending_evaluation, durable_step)
+        durable_step = completed_steps
+        pending_best = None
+        pending_evaluation = None
 
     def evaluate(step: int, applied_lr: float) -> None:
-        nonlocal best_val, eval_seconds
+        nonlocal best_val, eval_seconds, pending_best, pending_evaluation
         e0 = time.perf_counter()
         losses = estimate_loss(model, splits, cfg)
         try:
@@ -1000,7 +1336,8 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
             "event": "eval", "step": step, "tokens_seen": tokens_seen,
             "train_loss": losses["train"], "val_loss": losses["val"], "val_ppl": ppl, "lr": applied_lr,
         }
-        metrics.append(record)
+        # Publish this event and any new best only together with the matching resumable state.
+        pending_evaluation = record
         print(f"step {step:5d} | train {losses['train']:.3f} | val {losses['val']:.3f} "
               f"| ppl {ppl:.1f} | lr {applied_lr:.2e}")
         if wb:
@@ -1008,11 +1345,11 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
                     "train/eval_loss": losses["train"]}, step=step)
         if losses["val"] < best_val:
             best_val = losses["val"]
-            atomic_torch_save({
+            pending_best = {
                 "schema": CHECKPOINT_SCHEMA, "model": model.state_dict(),
                 "model_config": asdict(mcfg), "step": step, "val_loss": best_val,
                 "signature": signature,
-            }, best_path)
+            }
 
     # A new run gets a baseline at step zero. A resumed run already has the evaluation/checkpoint
     # associated with its completed step, so it continues directly with the next optimizer update.
@@ -1022,6 +1359,31 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
 
     device_type = torch.device(cfg.device).type
     while completed_steps < cfg.max_steps:
+        if control.reason() is not None:
+            if durable_step != completed_steps:
+                save_last()
+            stopped = {
+                "status": "stopped", "certified": False, "name": mcfg.name, "ratio": mcfg.ratio,
+                "run_id": cfg.run_id, "signature": signature, "completed_steps": completed_steps,
+                "tokens_seen": tokens_seen, "checkpoint_step": durable_step,
+                "observed_paths": {
+                    "training": backend_metadata["paths"]["training"] if completed_steps and mcfg.n_mamba_layers else None,
+                    "prefill": None, "decode": None,
+                },
+                "stop": {**control.snapshot(), "boundary": "complete checkpoint transaction"},
+            }
+            manifest.update({"status": "stopped", "updated_at": utc_now(),
+                             "completed_steps": completed_steps, "tokens_seen": tokens_seen,
+                             "observed_paths": stopped["observed_paths"],
+                             "stop": stopped["stop"]})
+            atomic_write_json(manifest_path, manifest)
+            if wb:
+                wb.finish()
+            print(f"stopped durably: {cfg.run_id}/{mcfg.name} at {completed_steps}/{cfg.max_steps} steps")
+            del model, optim
+            if device_type == "cuda":
+                torch.cuda.empty_cache()
+            return stopped
         step_index = completed_steps
         lr = cosine_lr(step_index, cfg)
 
@@ -1126,6 +1488,8 @@ def _run_locked(cfg: TrainConfig, mcfg: ModelConfig, run_dir: Path) -> dict[str,
             label: _file_sha256(run_dir / filename) for label, filename in ARTIFACT_FILES.items()
         },
     })
+    if cfg.wall_time_limit_seconds is not None:
+        manifest["invocation_wall_time"] = control.snapshot()
     atomic_write_json(manifest_path, manifest)
     print(f"done. {mcfg.name}: best val ppl {result['best_val_ppl']} | "
           f"{result['avg_tok_per_s']} tok/s | {result['peak_vram_mb']} MB peak")
@@ -1144,10 +1508,14 @@ def main() -> None:
         if isinstance(default, bool):
             ap.add_argument(arg, action=argparse.BooleanOptionalAction, default=default, dest=field)
         else:
-            value_type = int if field in {"model_seed", "data_seed", "eval_seed"} else type(default)
+            value_type = (int if field in {"model_seed", "data_seed", "eval_seed"}
+                          else float if field == "wall_time_limit_seconds" else type(default))
             choices = ("bfloat16", "float32") if field == "precision" else None
             ap.add_argument(arg, type=value_type, default=default, dest=field, choices=choices)
-    run(TrainConfig(**vars(ap.parse_args())))
+    cfg = TrainConfig(**vars(ap.parse_args()))
+    control = TrainingStopControl(cfg.wall_time_limit_seconds)
+    with cooperative_stop_signals(control), training_stop_scope(control):
+        run(cfg)
 
 
 if __name__ == "__main__":

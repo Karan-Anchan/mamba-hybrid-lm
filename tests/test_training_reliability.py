@@ -906,6 +906,7 @@ def test_default_precision_preserves_legacy_config_identity(tmp_path):
     cfg = _tiny_train_config(tmp_path)
     legacy = asdict(cfg)
     legacy.pop("precision")
+    legacy.pop("wall_time_limit_seconds")
     assert train_module._trajectory_config_dict(legacy) == train_module._trajectory_config_dict(asdict(cfg))
     model = train_module.load_model_config(cfg.model_config)
     payload = train_module._signature_payload(cfg, model, {"data": 1}, {"code": 2}, {"runtime": 3})

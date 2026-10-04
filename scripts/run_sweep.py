@@ -35,6 +35,10 @@ from src.train.train import (  # noqa: E402
     validate_run_id,
     variant_slug,
     precision_policy,
+    TrainingStopControl,
+    cooperative_stop_signals,
+    training_stop_scope,
+    current_training_stop_control,
 )
 from src.data.prepare_data import validate_prepared_dataset  # noqa: E402
 from src.model.scan_backend import resolve_scan_backend  # noqa: E402
@@ -85,6 +89,8 @@ def _sweep_signature(
     }
     if settings.get("precision", "bfloat16") == "bfloat16":
         settings.pop("precision", None)
+    if settings.get("wall_time_limit_seconds") is None:
+        settings.pop("wall_time_limit_seconds", None)
     payload = {
         "matrix": matrix,
         "scan_backend_plan": backend_plan,
@@ -134,6 +140,8 @@ def argument_parser() -> argparse.ArgumentParser:
                     help="bounded scan chunk length; fused mode requires a power of two")
     ap.add_argument("--precision", choices=("bfloat16", "float32"), default="bfloat16",
                     help="historical BF16 autocast, or a distinct FP32 policy with both TF32 flags disabled")
+    ap.add_argument("--wall-time-limit-seconds", type=float,
+                    help="shared invocation wall allowance; cooperatively save and stop, with recorded overshoot")
     ap.add_argument("--dry-run", action="store_true",
                     help="verify data/configs and print a JSON matrix without creating outputs or training")
     return ap
@@ -141,6 +149,10 @@ def argument_parser() -> argparse.ArgumentParser:
 
 def _validate_settings(args: argparse.Namespace) -> None:
     precision_policy(args.precision)
+    if args.wall_time_limit_seconds is not None and (
+            isinstance(args.wall_time_limit_seconds, bool) or not isinstance(args.wall_time_limit_seconds, (int, float))
+            or not math.isfinite(args.wall_time_limit_seconds) or args.wall_time_limit_seconds <= 0):
+        raise ValueError("wall_time_limit_seconds must be finite and positive")
     for name in (
         "max_steps", "block_size", "batch_size", "grad_accum", "eval_interval",
         "eval_iters", "log_interval", "checkpoint_interval", "scan_chunk_size",
@@ -265,7 +277,23 @@ def _execute_sweep(
 
     results: list[dict] = []
     sweep_t0 = time.time()
+    control = current_training_stop_control()
+
+    def stop_sweep(arm: dict, state: str, progress: dict | None = None) -> None:
+        manifest.update({
+            "status": "stopped", "updated_at": datetime.now(timezone.utc).isoformat(),
+            "completed_arms": [row["sweep_arm"]["arm_id"] for row in results],
+            "stopped_arm": {"arm_id": arm["arm_id"], "status": state,
+                            "progress": progress},
+            "stop": control.snapshot() if control is not None else progress.get("stop"),
+        })
+        atomic_write_json(manifest_path, manifest)
+        print("sweep stopped; incomplete arms are not a completed comparison")
+
     for arm in matrix:
+        if control is not None and control.reason() is not None:
+            stop_sweep(arm, "unexecuted")
+            return
         if hashlib.sha256(Path(arm["config_path"]).read_bytes()).hexdigest() != arm["config_sha256"]:
             raise RuntimeError(f"model config changed after matrix preparation: {arm['config_path']}")
         print(f"\narm: {arm['arm_id']} ({arm['config_path']})")
@@ -293,8 +321,12 @@ def _execute_sweep(
             scan_backend=args.scan_backend,
             scan_chunk_size=args.scan_chunk_size,
             precision=args.precision,
+            wall_time_limit_seconds=args.wall_time_limit_seconds,
         )
         result = dict(run(train_cfg))
+        if result.get("status") == "stopped":
+            stop_sweep(arm, "stopped", result)
+            return
         result["sweep_arm"] = arm
         if (args.configs is not None or args.model_seeds is not None
                 or args.data_seed is not None or args.eval_seed is not None):
@@ -313,6 +345,8 @@ def _execute_sweep(
         "completed_variants": [result["ratio"] for result in results],
         "completed_arms": [arm["arm_id"] for arm in matrix],
     })
+    if args.wall_time_limit_seconds is not None and control is not None:
+        manifest["invocation_wall_time"] = control.snapshot()
     atomic_write_json(manifest_path, manifest)
     print(f"\nsweep done in {elapsed_minutes:.1f} min\n")
     print(to_markdown(results))
@@ -338,13 +372,15 @@ def main(argv: list[str] | None = None) -> None:
             "tokens_per_arm": matrix[0]["tokens"], "tokens_total": sum(arm["tokens"] for arm in matrix),
             "matrix": matrix, "scan_backend_plan": backend_plan,
             "precision_policy": precision_policy(args.precision),
+            "wall_time_limit_seconds": args.wall_time_limit_seconds,
             "signature": _sweep_signature(args, run_id, data_signature, matrix, backend_plan),
         }, indent=2, sort_keys=True, allow_nan=False))
         return
     print(f"verified prepared data: {Path(args.data_dir).resolve()} ({data_signature})")
     print(f"run id: {run_id}; {len(matrix)} token-matched arms")
     out = sweep_output_dir(args.out, run_id)
-    with RunLock(out / ".sweep.lock"):
+    control = TrainingStopControl(args.wall_time_limit_seconds)
+    with RunLock(out / ".sweep.lock"), cooperative_stop_signals(control), training_stop_scope(control):
         _execute_sweep(args, run_id, data_signature, matrix, out, backend_plan)
 
 
