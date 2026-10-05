@@ -321,7 +321,7 @@ Research foundations and beginner walkthroughs are recorded in [the implementati
 
 All three historical checkpoints passed a short FP32 CUDA compatibility check on the RTX 5070. This is not a new language-quality evaluation. Run the test command above to verify the current checkout; recorded checks and their scope are linked from the implementation record.
 
-Latest full-suite result on 4 October 2026: **870 passed, 1 skipped** in 168.36 seconds, including CUDA tests on the RTX 5070. The existing file-symlink test is skipped in this Windows context. Passing software tests does not erase the separately recorded numerical or CUDA exact-recovery failures.
+Latest full-suite result on 5 October 2026: **1,016 passed, 1 skipped** in 275.96 seconds, including CUDA tests on the RTX 5070. The existing file-symlink test is skipped in this Windows context. The [verification receipt](docs/research/recovery-tokenwise-verification-2026-10-05.json) records source and evidence hashes. Passing software tests does not erase the separately recorded numerical or CUDA exact-recovery failures.
 
 ## Research follow-up
 
@@ -336,6 +336,10 @@ Training and sweeps now accept `--precision float32` as an explicitly identified
 The [layer isolation and recovery study](docs/research/NUMERICAL_ISOLATION_STUDY.md) locates the selected 1:15 threshold violation at one final score, follows real layer inputs and memory, and replays frozen scans against an independent FP64 recurrence. A named FP64 cumulative-decay treatment passes full forward checks in all 15 declared trained-model/shape cases, but three cached 1:15 cases still fail. Matching attention position-table precision alone also leaves the complete BF16 failures unresolved. The [validated breadth summary](docs/research/decay-breadth-summary-2026-10-04.json) retains every endpoint and unchanged tolerance; the treatment remains diagnostic.
 
 Checkpoint publication now stages best/latest/metrics together, records a write-ahead journal and recovers a complete generation. Sixty-four CPU interruption/stopping tests pass. A [separate four-update CUDA smoke](docs/research/checks/cuda-checkpoint-recovery-2026-10-04/report.json) stops durably at update two and resumes to four within its 300-second allowance, but final model/optimizer tensors fail exact equality. Random state and progress counters agree. Deterministic algorithms were disabled; this result does not isolate the cause. The research pilot remains prepared until numerical and CUDA recovery gates are resolved.
+
+The [repeated-control and tokenwise study](docs/research/RECOVERY_AND_TOKENWISE_STUDY.md), declared on 4 October and explained on 5 October, retains both recovery policies. Uninterrupted controls agree in all eight exact categories. Legacy stop/resume fails model and optimizer equality; strict deterministic stop/resume passes all eight. This is a short-workload CUDA control, with no production-policy promotion.
+
+Six trained tokenwise cases reproduce the remaining three 1:15 original-score failures. All twelve complete memory comparisons and frozen component probes pass. Earliest own-full/tokenwise drift is first-layer normalization. The 1:3 batch-two/512 control passes scores and memory while failing intermediate final-normalization representations against original. A focused normalization replay and declared precision factorial remain next gates; the research pilot is still prepared.
 
 ## Roadmap
 

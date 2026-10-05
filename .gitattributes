@@ -3,3 +3,17 @@
 results/**/*.json text eol=lf
 results/**/*.md text eol=lf
 results/**/*.svg text eol=lf
+# Keep the new declared studies' byte fingerprints stable on Windows checkouts.
+docs/research/checks/cuda-recovery-determinism-2026-10-04/*.json text eol=lf
+docs/research/checks/tokenwise-isolation-2026-10-04/*.json text eol=lf
+docs/research/cuda-recovery-determinism*.json text eol=lf
+docs/research/tokenwise-isolation*.json text eol=lf
+docs/research/recovery-tokenwise-verification-2026-10-05.json text eol=lf
+scripts/study_cuda_recovery_determinism.py text eol=lf
+scripts/isolate_tokenwise_numerics.py text eol=lf
+scripts/summarize_cuda_recovery_determinism.py text eol=lf
+scripts/summarize_tokenwise_isolation.py text eol=lf
+tests/test_cuda_recovery_determinism.py text eol=lf
+tests/test_cuda_recovery_determinism_summary.py text eol=lf
+tests/test_tokenwise_isolation.py text eol=lf
+tests/test_tokenwise_isolation_summary.py text eol=lf

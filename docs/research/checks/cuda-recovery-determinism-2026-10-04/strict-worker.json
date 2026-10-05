@@ -1,0 +1,726 @@
+{
+  "schema": 1,
+  "kind": "cuda_recovery_determinism_study",
+  "policy": "strict",
+  "certified": false,
+  "execution_status": "completed",
+  "status": "completed",
+  "process_environment": {
+    "CUBLAS_WORKSPACE_CONFIG": ":4096:8"
+  },
+  "declaration_sha256": "b55f2b03d7bf990920f637d2886081ca8b84a650c2656ee28a75a6d1bd02b978",
+  "source_sha256": {
+    "src/data/dataset.py": "03b3ddf7acc173531f0ec1fe6067463fc50c600b61e4fd48f3a7021aa6a9df93",
+    "src/data/prepare_data.py": "846aae9cd36c687105d8e3d6f675689c3f3948a64fe0fc8fc2fe31598bba13ac",
+    "src/data/train_tokenizer.py": "eab401c2575d7fac87f9685cf343f5c5be8cee01cbd1d14e93bce826caf19da9",
+    "src/eval/report.py": "bbf9ffa4323ec05cf5255c97d44933b53576d925d1b9c3fc0dd418098d2294a1",
+    "src/eval/suite.py": "d0b53b1563ebaa98f5247716c806888e68b2342338166a2c9ff1a71dc28db79f",
+    "src/eval/week5_report.py": "346dd481dcbdc7962b5e57da72f1a4ada7b583f6a1a21495729a6eb7f3b7c976",
+    "src/generation.py": "e492ea3b0d8c3b5cb2baf1b2c4a42a1af9c982d699e4ab95116d682bc1bf0b22",
+    "src/model/attention.py": "d45804c3ba668ee66a817406cb4596abd1f61ff5cbbbd944e44e145330cd84ba",
+    "src/model/block.py": "eaeae5a11c910499a075ca083294ab661911aa16b2ca54b887d1c14588c17851",
+    "src/model/config.py": "caeb8ceb9cbaaab84a1abd31588e6aa34a7bfd3f3859ac3394e6fde54b361019",
+    "src/model/inference.py": "b561e97aac89c706bce3a79d561b7cb77fd6237d6336db8300ac575dfd09dd74",
+    "src/model/lm.py": "2e93a006b9bfce06afa200d9dd9326fe882336ec1687d54d12381031b2be58c8",
+    "src/model/mamba2.py": "69d661f50e31586c361e8ee64c794a836da461d2f870fb455c19b4b2d39f00fe",
+    "src/model/mlp.py": "6f58c27eb8fe6facb2f1a99bc56485a7f4199d58e272c59394bb05e0e0825f2e",
+    "src/model/norm.py": "dff7295a2219873072c5f3f31fc8c648241afc541ba4b2ed0fa1581d35649521",
+    "src/model/scan_backend.py": "b546506ccf5fb1b34b2cfe603829f439c0c90e230ccbed92101aa61c1e2abe3f",
+    "src/serve/__init__.py": "1e79ab409a11f9837bfd7f32d16479014a8003715e5066eb29c79d9ea0ec920c",
+    "src/serve/app.py": "c636fa916dfb16c24a3140b9c4d7baae3092d0f8d3a5693249292c4dca731c6a",
+    "src/serve/registry.py": "9e5ecccc7752e920c61ffc5e5932ab6e0010d39b7474fe37a61d1f533040acb7",
+    "src/train/train.py": "e7df97023863967491deb472455a2aa917b31fe1f9c79354e1261e7b437b03b1",
+    "scripts/run_sweep.py": "84b9f7e0ad73a6b213f4e6cefc425049957409f91331568495ce91857ca9bbd5",
+    "requirements.txt": "cb526c48e2270e27b46e320b7fb2f2ba383ad48ac9375f27794f845108efc8fa",
+    "scripts/check_cuda_checkpoint_recovery.py": "88f696453524dd58f716b4e0ad30bd88ab4133db63af582cfd95a207e9839c0c",
+    "scripts/study_cuda_recovery_determinism.py": "a88342dff26718f68a20364fcc48774228e2ccf028a09da15ee9cb8e6e3acbfa"
+  },
+  "comparison_endpoint": "exact equality in all eight categories; no tolerance acceptance",
+  "research_pilot_executed": false,
+  "backend_parity_certified": false,
+  "torch_imported_at_worker_entry": false,
+  "common_workflow_started_monotonic": 125672.781,
+  "initial_cuda_headroom": {
+    "free_bytes": 11571036160,
+    "total_bytes": 12792037376
+  },
+  "runtime_ambient_before_policy": {
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26300-SP0",
+    "packages": {
+      "torch": "2.11.0+cu128",
+      "numpy": "2.4.6",
+      "tokenizers": "0.22.2",
+      "mamba-ssm": null,
+      "triton": null,
+      "causal-conv1d": null
+    },
+    "cuda_runtime": "12.8",
+    "gpu": "NVIDIA GeForce RTX 5070",
+    "capability": [
+      12,
+      0
+    ],
+    "deterministic_algorithms": false,
+    "training_policy": {
+      "precision": "float32",
+      "autocast_enabled": false,
+      "autocast_dtype": null,
+      "tf32_policy": "disabled"
+    },
+    "ambient_flags_outside_training": {
+      "cuda_matmul_allow_tf32": false,
+      "cudnn_allow_tf32": true
+    }
+  },
+  "phases": [
+    {
+      "phase": "control_a",
+      "arm": "control_a",
+      "wall_seconds": 55.59299999999348,
+      "io": {
+        "available": true,
+        "source": "Windows GetProcessIoCounters",
+        "counters": {
+          "read_operations": 31151,
+          "write_operations": 3996,
+          "other_operations": 14264,
+          "read_bytes": 32257122267,
+          "write_bytes": 3464615759,
+          "other_bytes": 833972
+        },
+        "scope": "OS process transfer counters, including cached I/O and checks; not physical-disk bytes"
+      },
+      "headroom_before": {
+        "free_bytes": 11571036160,
+        "total_bytes": 12792037376
+      },
+      "status": "completed",
+      "peak_allocated_bytes": 1074248704,
+      "completed_steps": 4,
+      "tokens_seen": 2048,
+      "stop": null,
+      "observed_paths": {
+        "training": "torch.quadratic_ssd",
+        "prefill": null,
+        "decode": null
+      }
+    },
+    {
+      "phase": "control_b",
+      "arm": "control_b",
+      "wall_seconds": 31.10899999999674,
+      "io": {
+        "available": true,
+        "source": "Windows GetProcessIoCounters",
+        "counters": {
+          "read_operations": 30771,
+          "write_operations": 3996,
+          "other_operations": 14848,
+          "read_bytes": 31674763514,
+          "write_bytes": 3464615775,
+          "other_bytes": 831528
+        },
+        "scope": "OS process transfer counters, including cached I/O and checks; not physical-disk bytes"
+      },
+      "headroom_before": {
+        "free_bytes": 11392778240,
+        "total_bytes": 12792037376
+      },
+      "status": "completed",
+      "peak_allocated_bytes": 1074692096,
+      "completed_steps": 4,
+      "tokens_seen": 2048,
+      "stop": null,
+      "observed_paths": {
+        "training": "torch.quadratic_ssd",
+        "prefill": null,
+        "decode": null
+      }
+    },
+    {
+      "phase": "requested_stop",
+      "arm": "resumed",
+      "wall_seconds": 54.29700000000594,
+      "io": {
+        "available": true,
+        "source": "Windows GetProcessIoCounters",
+        "counters": {
+          "read_operations": 19816,
+          "write_operations": 2250,
+          "other_operations": 8949,
+          "read_bytes": 20414543920,
+          "write_bytes": 1948847311,
+          "other_bytes": 505076
+        },
+        "scope": "OS process transfer counters, including cached I/O and checks; not physical-disk bytes"
+      },
+      "headroom_before": {
+        "free_bytes": 11392778240,
+        "total_bytes": 12792037376
+      },
+      "status": "stopped",
+      "peak_allocated_bytes": 1074692096,
+      "completed_steps": 2,
+      "tokens_seen": 1024,
+      "stop": {
+        "reason": "diagnostic:after-complete-checkpoint-step-2",
+        "elapsed_seconds": 412.10899999999674,
+        "wall_time_limit_seconds": 900.0,
+        "overshoot_seconds": 0.0,
+        "scope": "cooperative invocation wall time; in-flight work may exceed the allowance",
+        "boundary": "complete checkpoint transaction"
+      },
+      "observed_paths": {
+        "training": "torch.quadratic_ssd",
+        "prefill": null,
+        "decode": null
+      },
+      "wrapper": {
+        "wrapper_id": "post-successful _publish_checkpoint_transaction request_stop; restored in finally",
+        "stop_reason": "diagnostic:after-complete-checkpoint-step-2",
+        "original_binding": "src.train.train._publish_checkpoint_transaction",
+        "successful_steps": [
+          0,
+          1,
+          2
+        ],
+        "stop_requests": 1,
+        "restored": true
+      },
+      "last_sha256_at_stop": "d99eae32e24b679605920ec63e23c0b4c05fc6884197240f23c5953ae3e48543",
+      "boundary_artifact_scope": "last.pt at stop; superseded by successful resume"
+    },
+    {
+      "phase": "resumed",
+      "arm": "resumed",
+      "wall_seconds": 19.827999999994063,
+      "io": {
+        "available": true,
+        "source": "Windows GetProcessIoCounters",
+        "counters": {
+          "read_operations": 21469,
+          "write_operations": 1729,
+          "other_operations": 7331,
+          "read_bytes": 22146874703,
+          "write_bytes": 1515786258,
+          "other_bytes": 398984
+        },
+        "scope": "OS process transfer counters, including cached I/O and checks; not physical-disk bytes"
+      },
+      "headroom_before": {
+        "free_bytes": 11392778240,
+        "total_bytes": 12792037376
+      },
+      "status": "completed",
+      "peak_allocated_bytes": 1078083584,
+      "completed_steps": 4,
+      "tokens_seen": 2048,
+      "stop": null,
+      "observed_paths": {
+        "training": "torch.quadratic_ssd",
+        "prefill": null,
+        "decode": null
+      }
+    }
+  ],
+  "policy_flags": {
+    "before": {
+      "deterministic_algorithms": false,
+      "warn_only": false,
+      "cudnn_deterministic": false,
+      "cudnn_benchmark": false,
+      "cuda_matmul_allow_tf32": false,
+      "cudnn_allow_tf32": true,
+      "fill_uninitialized_memory": true
+    },
+    "requested": {
+      "name": "strict",
+      "deterministic_algorithms": true,
+      "warn_only": false,
+      "cudnn_deterministic": true,
+      "cudnn_benchmark": false
+    },
+    "restored": true,
+    "active": {
+      "deterministic_algorithms": true,
+      "warn_only": false,
+      "cudnn_deterministic": true,
+      "cudnn_benchmark": false,
+      "cuda_matmul_allow_tf32": false,
+      "cudnn_allow_tf32": true,
+      "fill_uninitialized_memory": true
+    },
+    "after": {
+      "deterministic_algorithms": false,
+      "warn_only": false,
+      "cudnn_deterministic": false,
+      "cudnn_benchmark": false,
+      "cuda_matmul_allow_tf32": false,
+      "cudnn_allow_tf32": true,
+      "fill_uninitialized_memory": true
+    }
+  },
+  "comparisons": {
+    "control_a_vs_control_b": {
+      "passed": true,
+      "checks": {
+        "model": {
+          "exact_equal": true,
+          "tensor_checks": 205,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "optimizer": {
+          "exact_equal": true,
+          "tensor_checks": 612,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "rng": {
+          "exact_equal": true,
+          "tensor_checks": 4,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "completed_steps": {
+          "exact_equal": true,
+          "tensor_checks": 0,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "tokens_seen": {
+          "exact_equal": true,
+          "tensor_checks": 0,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "best_val_loss": {
+          "exact_equal": true,
+          "tensor_checks": 0,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "train_batch_generator": {
+          "exact_equal": true,
+          "tensor_checks": 1,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "semantic_metrics": {
+          "exact_equal": true,
+          "tensor_checks": 0,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        }
+      },
+      "timing_excluded": [
+        "train_seconds",
+        "eval_seconds",
+        "peak_vram_mb",
+        "step_seconds",
+        "tok_per_s"
+      ],
+      "scope": "exact same-policy trajectory identity; descriptive magnitudes do not convert failures to passes",
+      "tolerances_relaxed": false
+    },
+    "control_a_vs_resumed": {
+      "passed": true,
+      "checks": {
+        "model": {
+          "exact_equal": true,
+          "tensor_checks": 205,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "optimizer": {
+          "exact_equal": true,
+          "tensor_checks": 612,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "rng": {
+          "exact_equal": true,
+          "tensor_checks": 4,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "completed_steps": {
+          "exact_equal": true,
+          "tensor_checks": 0,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "tokens_seen": {
+          "exact_equal": true,
+          "tensor_checks": 0,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "best_val_loss": {
+          "exact_equal": true,
+          "tensor_checks": 0,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "train_batch_generator": {
+          "exact_equal": true,
+          "tensor_checks": 1,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        },
+        "semantic_metrics": {
+          "exact_equal": true,
+          "tensor_checks": 0,
+          "difference_count": 0,
+          "first_differences": [],
+          "descriptive_magnitudes": {
+            "scope": "descriptive numeric differences; exact equality alone decides the check",
+            "different_numeric_elements": 0,
+            "nonfinite_pairs": 0,
+            "max_absolute_difference": 0.0,
+            "max_symmetric_relative_difference": 0.0,
+            "relative_denominator": "max(abs(left),abs(right),1e-12)",
+            "checkpoint_layout_differences": 0,
+            "layout_examples": []
+          }
+        }
+      },
+      "timing_excluded": [
+        "train_seconds",
+        "eval_seconds",
+        "peak_vram_mb",
+        "step_seconds",
+        "tok_per_s"
+      ],
+      "scope": "exact same-policy trajectory identity; descriptive magnitudes do not convert failures to passes",
+      "tolerances_relaxed": false
+    }
+  },
+  "artifacts": {
+    "control_a": {
+      "best": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-control-a-v1/hybrid-1_15-ee7b7913/best.pt",
+        "sha256": "13346f1d60655335ba3c6e401dd67ba81cded09613c36881ceaa550e132e36f0"
+      },
+      "last": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-control-a-v1/hybrid-1_15-ee7b7913/last.pt",
+        "sha256": "4aad2377acdc095100fe097c3f2c4c07d9a79b5491b7f744b56cd1a85c9d3afc"
+      },
+      "metrics": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-control-a-v1/hybrid-1_15-ee7b7913/metrics.jsonl",
+        "sha256": "84349b8c488eec607866c8f62aa27f7fbb934d2517499848eb3605131259c19e"
+      },
+      "result": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-control-a-v1/hybrid-1_15-ee7b7913/result.json",
+        "sha256": "aa9f9c91ca3435e78a03686782d58c8c9b8dc333e8ec516fc1ee6bbffd5b80a8"
+      },
+      "manifest": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-control-a-v1/hybrid-1_15-ee7b7913/manifest.json",
+        "sha256": "699b142a9e169ec80a40f543e183b6d4b1a7b35560c0585a13e9571d12fb3477"
+      }
+    },
+    "control_b": {
+      "best": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-control-b-v1/hybrid-1_15-ee7b7913/best.pt",
+        "sha256": "068ff3e91f01b140f7663dd7b55472523a9de48ed0c4627ccd9b9dcdac355be4"
+      },
+      "last": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-control-b-v1/hybrid-1_15-ee7b7913/last.pt",
+        "sha256": "a2de2c6bacd6c2be0c43385ea7c683a097b2a89b46123bc1683e121a4df748eb"
+      },
+      "metrics": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-control-b-v1/hybrid-1_15-ee7b7913/metrics.jsonl",
+        "sha256": "e40c3cdab4d5f27b8d93ece24091dd5cad597132a8872416ee03cba113422272"
+      },
+      "result": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-control-b-v1/hybrid-1_15-ee7b7913/result.json",
+        "sha256": "ec6db6d01568a1a8a50010b0ba90497572ea1c160bd6b451cb73515cb36cd671"
+      },
+      "manifest": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-control-b-v1/hybrid-1_15-ee7b7913/manifest.json",
+        "sha256": "5cdc53394d887b349e3ff573e155578296372dc7fe416ce62cf8f274f3b06fd9"
+      }
+    },
+    "resumed": {
+      "best": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-resume-v1/hybrid-1_15-ee7b7913/best.pt",
+        "sha256": "de2e83518be5a5322121566a52fc7a75fbb89edbeb010f43737a97a6c4164dd9"
+      },
+      "last": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-resume-v1/hybrid-1_15-ee7b7913/last.pt",
+        "sha256": "805ef7dbd7ece4721b5b995fd46b1a6de4a331d90ddf789380bb654c72c346b3"
+      },
+      "metrics": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-resume-v1/hybrid-1_15-ee7b7913/metrics.jsonl",
+        "sha256": "2c729a2c267f10a328dc930bc1cc2b5b0c32874926b722059bb1c251ec48059a"
+      },
+      "result": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-resume-v1/hybrid-1_15-ee7b7913/result.json",
+        "sha256": "7e0e1c0e2a400825aa5fc65e8f04488eefb8d69840a84c5f9f42c909a12284c0"
+      },
+      "manifest": {
+        "path": "checkpoints/operational-determinism-2026-10-04/cuda-recovery-strict-resume-v1/hybrid-1_15-ee7b7913/manifest.json",
+        "sha256": "48a99cc4462dc950e030aff7c174a06bd170acd4e1fe8b75e3d4702ed9544427"
+      }
+    }
+  },
+  "training_provenance": {
+    "control_a": {
+      "signature": "4f2cfdf3feb532439a90470e1aa17228fe188d419cebdf176167d086202582e8",
+      "source_fingerprint": "933f82ea3b48c6b1478957bae76ece0bed29f62bd70a3147760b730099c9ec53",
+      "git": {
+        "commit": "7954c4859dec4d0f2e673567a5683043cf8762ec",
+        "dirty": true
+      },
+      "training_precision": {
+        "device_type": "cuda",
+        "policy": {
+          "autocast_dtype": null,
+          "autocast_enabled": false,
+          "precision": "float32",
+          "tf32_policy": "disabled"
+        },
+        "runtime_flags": {
+          "cuda_matmul_allow_tf32": false,
+          "cudnn_allow_tf32": false
+        }
+      }
+    },
+    "control_b": {
+      "signature": "5e7a056864674f9c1392ccc90008ee604a9b63e4a4513df9f765d30c30212a0d",
+      "source_fingerprint": "933f82ea3b48c6b1478957bae76ece0bed29f62bd70a3147760b730099c9ec53",
+      "git": {
+        "commit": "7954c4859dec4d0f2e673567a5683043cf8762ec",
+        "dirty": true
+      },
+      "training_precision": {
+        "device_type": "cuda",
+        "policy": {
+          "autocast_dtype": null,
+          "autocast_enabled": false,
+          "precision": "float32",
+          "tf32_policy": "disabled"
+        },
+        "runtime_flags": {
+          "cuda_matmul_allow_tf32": false,
+          "cudnn_allow_tf32": false
+        }
+      }
+    },
+    "resumed": {
+      "signature": "d502c7efe83c23d36b42577b2eb4c84cb8b7a0ac1ddc5f7b63f9c5babfc116a2",
+      "source_fingerprint": "933f82ea3b48c6b1478957bae76ece0bed29f62bd70a3147760b730099c9ec53",
+      "git": {
+        "commit": "7954c4859dec4d0f2e673567a5683043cf8762ec",
+        "dirty": true
+      },
+      "training_precision": {
+        "device_type": "cuda",
+        "policy": {
+          "autocast_dtype": null,
+          "autocast_enabled": false,
+          "precision": "float32",
+          "tf32_policy": "disabled"
+        },
+        "runtime_flags": {
+          "cuda_matmul_allow_tf32": false,
+          "cudnn_allow_tf32": false
+        }
+      }
+    }
+  },
+  "artifact_capture_scope": "files present at worker end, including incomplete trajectories; existence does not imply completion",
+  "historical_preservation": {
+    "all_bytes_unchanged": true,
+    "checks": [
+      {
+        "path": "checkpoints/week3-700m-v1/hybrid-1_3-76f9c3a9/best.pt",
+        "expected_sha256": "0995d848d8538a0169151e94388660554dcf90ce93c9a5bb2fa18ae1aec0504c",
+        "actual_sha256": "0995d848d8538a0169151e94388660554dcf90ce93c9a5bb2fa18ae1aec0504c",
+        "bytes_unchanged": true
+      },
+      {
+        "path": "checkpoints/week3-700m-v1/hybrid-1_7-9a5e2bc8/best.pt",
+        "expected_sha256": "e3270576bd3585268d6eec59f6f01fe6227d6e6e446d8b1b284b0b429b6346df",
+        "actual_sha256": "e3270576bd3585268d6eec59f6f01fe6227d6e6e446d8b1b284b0b429b6346df",
+        "bytes_unchanged": true
+      },
+      {
+        "path": "checkpoints/week3-700m-v1/hybrid-1_15-ee7b7913/best.pt",
+        "expected_sha256": "1ff7ad5454ade6322ddc52d28eefdc4d3c7ade0142fdcc350f139fef08d58e91",
+        "actual_sha256": "1ff7ad5454ade6322ddc52d28eefdc4d3c7ade0142fdcc350f139fef08d58e91",
+        "bytes_unchanged": true
+      }
+    ]
+  },
+  "historical_bytes_unchanged": true,
+  "worker_wall_seconds": 244.0,
+  "shared_workflow_elapsed_seconds": 464.10899999999674,
+  "wall_overshoot_seconds": 0.0,
+  "worker_io": {
+    "available": true,
+    "source": "Windows GetProcessIoCounters",
+    "counters": {
+      "read_operations": 226005,
+      "write_operations": 11972,
+      "other_operations": 93524,
+      "read_bytes": 232250901253,
+      "write_bytes": 10393865168,
+      "other_bytes": 5143156
+    },
+    "scope": "OS process transfer counters, including cached I/O and checks; not physical-disk bytes"
+  },
+  "worker_resource_scope": "worker after declaration/source/history preflight: corpus validation, CUDA checks, training, comparisons and final evidence; excludes import/startup and report publication",
+  "cuda_peak_scope": "cumulative worker CUDA allocation high-water mark as of each phase, not an exclusive phase peak"
+}

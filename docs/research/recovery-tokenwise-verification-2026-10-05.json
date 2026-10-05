@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "kind": "recovery_tokenwise_regression_verification",
+  "date": "2026-10-05",
+  "execution_status": "completed",
+  "certified": false,
+  "regression": {
+    "passed": 1016,
+    "total": 1017,
+    "skipped": 1,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 275.9,
+    "junit_sha256": "f1bf16a57b0371f3365da745011f8089f2f01d0a598f3de20a6f2e6232d7d085",
+    "scope": "Full project suite, including CUDA; one existing Windows file-symlink skip"
+  },
+  "focused_tests": {
+    "recovery_producer": 27,
+    "tokenwise_producer": 28,
+    "recovery_exporter": 55,
+    "tokenwise_exporter": 36
+  },
+  "source_sha256": {
+    "src/train/train.py": "e7df97023863967491deb472455a2aa917b31fe1f9c79354e1261e7b437b03b1",
+    "scripts/run_sweep.py": "84b9f7e0ad73a6b213f4e6cefc425049957409f91331568495ce91857ca9bbd5",
+    "scripts/check_cuda_checkpoint_recovery.py": "88f696453524dd58f716b4e0ad30bd88ab4133db63af582cfd95a207e9839c0c",
+    "scripts/study_cuda_recovery_determinism.py": "a88342dff26718f68a20364fcc48774228e2ccf028a09da15ee9cb8e6e3acbfa",
+    "scripts/isolate_tokenwise_numerics.py": "32b42eeb725b9906464afbe2d77b95667e28bb21cdecdcce87d937c9b316fe9e",
+    "scripts/summarize_cuda_recovery_determinism.py": "4eaade342f3759a4fe458ca8c05c6891e38f2e14b51f28801ccf2b2c76ac091c",
+    "scripts/summarize_tokenwise_isolation.py": "86bc67bc80aabef24ca6f6b5b4aa5d200fdec9653c3b438bec94f1f19c4836fc",
+    "tests/test_cuda_recovery_determinism.py": "8ab2e34de99ece72e31b42575d47bf4d644e6710747451b2ee71668cf39d395f",
+    "tests/test_tokenwise_isolation.py": "bd5f67d4b8a72f45e08585cc445d2feedbaaa28284f46cfd3436d9a7196fa454",
+    "tests/test_cuda_recovery_determinism_summary.py": "421a3fba9de4f6f7e363d692ca1d7a6c827fdae417ea79a14a323f086053fa78",
+    "tests/test_tokenwise_isolation_summary.py": "f13fce2a76e3d12b59fac99c42004853c0f9386e07331e7ce724a24ba3798a24"
+  },
+  "evidence": [
+    {
+      "path": "docs/research/cuda-recovery-determinism-summary-2026-10-04.json",
+      "sha256": "c89320fa157a409a6daafc3e570d57a38cd228beb9f03995b01a075018602aa8",
+      "website_file": "recoveryDeterminism.json",
+      "website_bytes_match": true,
+      "declaration": {
+        "path": "docs/research/cuda-recovery-determinism-protocol-2026-10-04.json",
+        "sha256": "b55f2b03d7bf990920f637d2886081ca8b84a650c2656ee28a75a6d1bd02b978",
+        "canonical_sha256": "e9922321ecd587f13968be461fd8eaf75b53c2598008f00723e755b97e2b0da1"
+      },
+      "raw_report": {
+        "path": "docs/research/checks/cuda-recovery-determinism-2026-10-04/report.json",
+        "sha256": "cf20b4d223a2f390561e05573540e0bdbcda449094e0b49caad04f60db56630f"
+      }
+    },
+    {
+      "path": "docs/research/tokenwise-isolation-summary-2026-10-04.json",
+      "sha256": "0e0c03c66c7e0602fc99311ed2ee907e1ab5f4c4b8f6efff1b18de4c22ffaa0d",
+      "website_file": "tokenwiseIsolation.json",
+      "website_bytes_match": true,
+      "declaration": {
+        "path": "docs/research/tokenwise-isolation-protocol-2026-10-04.json",
+        "sha256": "8b32ffb9d3b486880cc233d6d5ea5485aae48bd50a869e09d62a4fa0538f7e4b"
+      },
+      "raw_report": {
+        "path": "docs/research/checks/tokenwise-isolation-2026-10-04/natural-remaining-seed-2027.json",
+        "sha256": "7f9ba4c4bbfd30b995acb6dc5746cbf216dd64fcf156131d38983ba56623011f"
+      }
+    }
+  ],
+  "limits": [
+    "Software regression success does not certify failed numerical endpoints or a production recovery policy.",
+    "No official fused kernel or five-arm research pilot executed.",
+    "Historical checkpoints, declarations, diagnostic producer sources and acceptance thresholds are preserved."
+  ]
+}

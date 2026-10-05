@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "version": 1,
+  "kind": "cuda_recovery_determinism_study",
+  "date": "2026-10-04",
+  "status_at_declaration": "planned_before_execution",
+  "train_config": {
+    "device": "cuda",
+    "precision": "float32",
+    "scan_backend": "reference",
+    "scan_chunk_size": 128,
+    "seed": 1337,
+    "model_seed": 1337,
+    "data_seed": 1337,
+    "eval_seed": 1337,
+    "max_steps": 4,
+    "block_size": 512,
+    "batch_size": 1,
+    "grad_accum": 1,
+    "warmup_steps": 1,
+    "eval_interval": 2,
+    "eval_iters": 1,
+    "checkpoint_interval": 1,
+    "log_interval": 1,
+    "lr": 0.001,
+    "min_lr": 0.0001,
+    "weight_decay": 0.1,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "grad_clip": 1.0,
+    "grad_checkpointing": true,
+    "wandb": false,
+    "resume": true,
+    "wall_time_limit_seconds": 900.0
+  },
+  "guards": {
+    "wall_seconds": 900,
+    "min_free_cuda_bytes": 8589934592
+  },
+  "process_environment": {
+    "CUBLAS_WORKSPACE_CONFIG": ":4096:8"
+  },
+  "policies": [
+    {
+      "name": "legacy",
+      "deterministic_algorithms": false,
+      "warn_only": false,
+      "cudnn_deterministic": false,
+      "cudnn_benchmark": false
+    },
+    {
+      "name": "strict",
+      "deterministic_algorithms": true,
+      "warn_only": false,
+      "cudnn_deterministic": true,
+      "cudnn_benchmark": false
+    }
+  ],
+  "stop": {
+    "step": 2,
+    "reason": "diagnostic:after-complete-checkpoint-step-2",
+    "wrapper": "post-successful _publish_checkpoint_transaction request_stop; restored in finally"
+  },
+  "checkpoint_root": "checkpoints/operational-determinism-2026-10-04",
+  "run_ids": {
+    "legacy": {
+      "control_a": "cuda-recovery-legacy-control-a-v1",
+      "control_b": "cuda-recovery-legacy-control-b-v1",
+      "resumed": "cuda-recovery-legacy-resume-v1"
+    },
+    "strict": {
+      "control_a": "cuda-recovery-strict-control-a-v1",
+      "control_b": "cuda-recovery-strict-control-b-v1",
+      "resumed": "cuda-recovery-strict-resume-v1"
+    }
+  },
+  "model_config": {
+    "path": "configs/ratio_1_15.yaml",
+    "sha256": "64add5b5acd53688aa84a9258c033288565dc8de9eb93d637e5c782598614239"
+  },
+  "data": {
+    "directory": "data/openwebtext-5b",
+    "signature": "4d132a4e0887c934874f45a28a37f5a9b902cc727cb76e41fad692c0bec4b3a7",
+    "manifest_sha256": "cca2be85a7c8ca909d3adf0ccf7986570a8e0e4f2cbaf5dceba47b979b9a1802"
+  },
+  "source_sha256": {
+    "src/data/dataset.py": "03b3ddf7acc173531f0ec1fe6067463fc50c600b61e4fd48f3a7021aa6a9df93",
+    "src/data/prepare_data.py": "846aae9cd36c687105d8e3d6f675689c3f3948a64fe0fc8fc2fe31598bba13ac",
+    "src/data/train_tokenizer.py": "eab401c2575d7fac87f9685cf343f5c5be8cee01cbd1d14e93bce826caf19da9",
+    "src/eval/report.py": "bbf9ffa4323ec05cf5255c97d44933b53576d925d1b9c3fc0dd418098d2294a1",
+    "src/eval/suite.py": "d0b53b1563ebaa98f5247716c806888e68b2342338166a2c9ff1a71dc28db79f",
+    "src/eval/week5_report.py": "346dd481dcbdc7962b5e57da72f1a4ada7b583f6a1a21495729a6eb7f3b7c976",
+    "src/generation.py": "e492ea3b0d8c3b5cb2baf1b2c4a42a1af9c982d699e4ab95116d682bc1bf0b22",
+    "src/model/attention.py": "d45804c3ba668ee66a817406cb4596abd1f61ff5cbbbd944e44e145330cd84ba",
+    "src/model/block.py": "eaeae5a11c910499a075ca083294ab661911aa16b2ca54b887d1c14588c17851",
+    "src/model/config.py": "caeb8ceb9cbaaab84a1abd31588e6aa34a7bfd3f3859ac3394e6fde54b361019",
+    "src/model/inference.py": "b561e97aac89c706bce3a79d561b7cb77fd6237d6336db8300ac575dfd09dd74",
+    "src/model/lm.py": "2e93a006b9bfce06afa200d9dd9326fe882336ec1687d54d12381031b2be58c8",
+    "src/model/mamba2.py": "69d661f50e31586c361e8ee64c794a836da461d2f870fb455c19b4b2d39f00fe",
+    "src/model/mlp.py": "6f58c27eb8fe6facb2f1a99bc56485a7f4199d58e272c59394bb05e0e0825f2e",
+    "src/model/norm.py": "dff7295a2219873072c5f3f31fc8c648241afc541ba4b2ed0fa1581d35649521",
+    "src/model/scan_backend.py": "b546506ccf5fb1b34b2cfe603829f439c0c90e230ccbed92101aa61c1e2abe3f",
+    "src/serve/__init__.py": "1e79ab409a11f9837bfd7f32d16479014a8003715e5066eb29c79d9ea0ec920c",
+    "src/serve/app.py": "c636fa916dfb16c24a3140b9c4d7baae3092d0f8d3a5693249292c4dca731c6a",
+    "src/serve/registry.py": "9e5ecccc7752e920c61ffc5e5932ab6e0010d39b7474fe37a61d1f533040acb7",
+    "src/train/train.py": "e7df97023863967491deb472455a2aa917b31fe1f9c79354e1261e7b437b03b1",
+    "scripts/run_sweep.py": "84b9f7e0ad73a6b213f4e6cefc425049957409f91331568495ce91857ca9bbd5",
+    "requirements.txt": "cb526c48e2270e27b46e320b7fb2f2ba383ad48ac9375f27794f845108efc8fa",
+    "scripts/check_cuda_checkpoint_recovery.py": "88f696453524dd58f716b4e0ad30bd88ab4133db63af582cfd95a207e9839c0c",
+    "scripts/study_cuda_recovery_determinism.py": "a88342dff26718f68a20364fcc48774228e2ccf028a09da15ee9cb8e6e3acbfa"
+  },
+  "historical_checkpoints": [
+    {
+      "ratio": "1:3",
+      "path": "checkpoints/week3-700m-v1/hybrid-1_3-76f9c3a9/best.pt",
+      "sha256": "0995d848d8538a0169151e94388660554dcf90ce93c9a5bb2fa18ae1aec0504c"
+    },
+    {
+      "ratio": "1:7",
+      "path": "checkpoints/week3-700m-v1/hybrid-1_7-9a5e2bc8/best.pt",
+      "sha256": "e3270576bd3585268d6eec59f6f01fe6227d6e6e446d8b1b284b0b429b6346df"
+    },
+    {
+      "ratio": "1:15",
+      "path": "checkpoints/week3-700m-v1/hybrid-1_15-ee7b7913/best.pt",
+      "sha256": "1ff7ad5454ade6322ddc52d28eefdc4d3c7ade0142fdcc350f139fef08d58e91"
+    }
+  ],
+  "prior_smoke": {
+    "path": "docs/research/checks/cuda-checkpoint-recovery-2026-10-04/report.json",
+    "sha256": "d2a50c3423aabd3ab119cd055155911a35f47a79c40e0760763764d2cfa52747"
+  },
+  "output": "docs/research/checks/cuda-recovery-determinism-2026-10-04/report.json",
+  "limits": [
+    "Fresh policy processes share a cuBLAS setting; legacy is not an exact reproduction of prior ambient settings.",
+    "Uninterrupted repeatability and resumed identity remain separate exact endpoints.",
+    "No new language-quality ranking, research pilot, production-policy promotion or fused-backend certification.",
+    "One shared monotonic 900-second origin includes all workers and validation; cooperative overshoot is retained.",
+    "Unsupported strict operations remain incomplete; no downgraded or reduced-shape fallback."
+  ]
+}
