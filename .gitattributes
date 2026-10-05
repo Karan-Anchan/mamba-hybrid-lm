@@ -17,3 +17,10 @@ tests/test_cuda_recovery_determinism.py text eol=lf
 tests/test_cuda_recovery_determinism_summary.py text eol=lf
 tests/test_tokenwise_isolation.py text eol=lf
 tests/test_tokenwise_isolation_summary.py text eol=lf
+docs/research/checks/normalization-head-2026-10-05/*.json text eol=lf
+docs/research/checks/normalization-head-2026-10-05/*.json.gz -text
+docs/research/normalization-head*.json text eol=lf
+scripts/study_normalization_head_precision.py text eol=lf
+scripts/summarize_normalization_head_precision.py text eol=lf
+tests/test_normalization_head_precision.py text eol=lf
+tests/test_normalization_head_precision_summary.py text eol=lf

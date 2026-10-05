@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "kind": "lossless_normalization_head_raw_publication",
+  "compression": "gzip",
+  "path": "docs/research/checks/normalization-head-2026-10-05/natural-matched-seed-2027.json.gz",
+  "bytes": 5975145,
+  "sha256": "36d7efa1fad3497f1d7ba3b0b9fb61853408df4d6781e2d9c5046e9f9aa741a3",
+  "uncompressed_path": "docs/research/checks/normalization-head-2026-10-05/natural-matched-seed-2027.json",
+  "uncompressed_bytes": 152444374,
+  "uncompressed_sha256": "1cd4a0cbbf414f65a3712d2aaec07f6a35098a318bae5699f5e60d3302c4a0ee",
+  "round_trip_exact": true,
+  "scope": "Lossless transport of the original immutable report; no JSON reserialization or evidence removal."
+}

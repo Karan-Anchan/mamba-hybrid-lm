@@ -25,7 +25,7 @@ the optimized speed profile of fused Mamba kernels.
 
 ## Week 5 result
 
-Week 5 turns the certified checkpoints into a reproducible generation system. A one-model-at-a-time FastAPI
+Week 5 turns the registered, identity-verified checkpoints into a reproducible generation system. A one-model-at-a-time FastAPI
 service exposes JSON and token-streaming endpoints, verifies checkpoint identity before loading, reports real
 latency and memory, and catches out-of-memory failures without terminating the process. The public showcase is
 a separate React site that can use this API when a model host is available. Its GitHub Pages deployment stays in
@@ -263,7 +263,7 @@ Run a short end-to-end check against one real checkpoint:
   --run-id week4-smoke
 ```
 
-Run or resume the certified three-variant protocol only from a clean implementation commit:
+Run or resume the registered three-variant evaluation protocol only from a clean implementation commit:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\run_week4_eval.py `
@@ -321,7 +321,7 @@ Research foundations and beginner walkthroughs are recorded in [the implementati
 
 All three historical checkpoints passed a short FP32 CUDA compatibility check on the RTX 5070. This is not a new language-quality evaluation. Run the test command above to verify the current checkout; recorded checks and their scope are linked from the implementation record.
 
-Latest full-suite result on 5 October 2026: **1,016 passed, 1 skipped** in 275.96 seconds, including CUDA tests on the RTX 5070. The existing file-symlink test is skipped in this Windows context. The [verification receipt](docs/research/recovery-tokenwise-verification-2026-10-05.json) records source and evidence hashes. Passing software tests does not erase the separately recorded numerical or CUDA exact-recovery failures.
+Latest full-suite result on 5 October 2026: **1,108 passed, 1 skipped** in 322.74 seconds, including CUDA tests on the RTX 5070. The existing file-symlink test is skipped in this Windows context. The [verification receipt](docs/research/normalization-head-verification-2026-10-05.json) records source, evidence and lossless-publication hashes. Passing software tests does not erase the separately recorded numerical or CUDA exact-recovery failures.
 
 ## Research follow-up
 
@@ -339,7 +339,11 @@ Checkpoint publication now stages best/latest/metrics together, records a write-
 
 The [repeated-control and tokenwise study](docs/research/RECOVERY_AND_TOKENWISE_STUDY.md), declared on 4 October and explained on 5 October, retains both recovery policies. Uninterrupted controls agree in all eight exact categories. Legacy stop/resume fails model and optimizer equality; strict deterministic stop/resume passes all eight. This is a short-workload CUDA control, with no production-policy promotion.
 
-Six trained tokenwise cases reproduce the remaining three 1:15 original-score failures. All twelve complete memory comparisons and frozen component probes pass. Earliest own-full/tokenwise drift is first-layer normalization. The 1:3 batch-two/512 control passes scores and memory while failing intermediate final-normalization representations against original. A focused normalization replay and declared precision factorial remain next gates; the research pilot is still prepared.
+Six trained tokenwise cases reproduce the remaining three 1:15 original-score failures. All twelve complete memory comparisons and frozen component probes pass. Earliest own-full/tokenwise drift is first-layer normalization. The 1:3 batch-two/512 control passes scores and memory while failing intermediate final-normalization representations against original. Those findings motivated the normalization replay and declared precision factorial below.
+
+The [5 October normalization/head study](docs/research/NORMALIZATION_HEAD_STUDY.md) completes six fixed cases with four arithmetic choices in 633.453 seconds. Higher-precision normalization raises one-token agreement with the original scores from 3/6 to 6/6, but all four choices still pass agreement with their own full reading in only 4/6 cases. It worsens the length-129 internal comparison and introduces real-prefix chunking failures. All 336 retained-memory bundles and 4,791 frozen local checks pass; the 1:3 intermediate negatives remain. No choice passes every complete case, so defaults and the prepared training pilot remain unchanged.
+
+The [full validated summary](docs/research/normalization-head-summary-2026-10-05.json) preserves detailed evidence. The [compact website view](docs/research/normalization-head-view-2026-10-05.json) binds that summary's hash, keeps every failed stage and bounded coordinate sample, and carries the original complete gate counts. The [complete raw report](docs/research/checks/normalization-head-2026-10-05/natural-matched-seed-2027.json.gz) is published as a lossless gzip archive: 152,444,374 original bytes become 5,975,145 transport bytes without removing evidence. Its [transport manifest](docs/research/normalization-head-raw-publication-2026-10-05.json) records both hashes and exact decompression verification. Projection arithmetic and genuine-prefix isolation are the next dependency before broader gradient/causality checks or policy selection.
 
 ## Roadmap
 

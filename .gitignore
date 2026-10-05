@@ -37,3 +37,7 @@ Thumbs.db
 # Logs (keep the human-authored docs, ignore machine logs)
 *.log
 logs/
+
+# Complete normalization trace exceeds GitHub's per-file limit. Keep the original
+# immutable JSON locally; the hashed, lossless .json.gz companion is published.
+docs/research/checks/normalization-head-2026-10-05/natural-matched-seed-2027.json

@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "kind": "normalization_head_regression_verification",
+  "date": "2026-10-05",
+  "execution_status": "completed",
+  "certified": false,
+  "regression": {
+    "passed": 1108,
+    "total": 1109,
+    "skipped": 1,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 322.681,
+    "junit_sha256": "ae5dfcc90585801ab84c5e08e1b1b2817d2e445b0fe103491e1cc6c7577d6f99",
+    "scope": "Full project suite, including CUDA; one existing Windows file-symlink skip"
+  },
+  "focused_tests": {
+    "test_normalization_head_precision": 37,
+    "test_normalization_head_precision_summary": 55
+  },
+  "source_sha256": {
+    "src/model/norm.py": "dff7295a2219873072c5f3f31fc8c648241afc541ba4b2ed0fa1581d35649521",
+    "src/model/lm.py": "2e93a006b9bfce06afa200d9dd9326fe882336ec1687d54d12381031b2be58c8",
+    "src/model/mamba2.py": "69d661f50e31586c361e8ee64c794a836da461d2f870fb455c19b4b2d39f00fe",
+    "src/model/scan_backend.py": "b546506ccf5fb1b34b2cfe603829f439c0c90e230ccbed92101aa61c1e2abe3f",
+    "scripts/study_normalization_head_precision.py": "5491499bd0cc01fd3decf343dab84f6382e1298c9849499bfd3e6cd0509cde30",
+    "scripts/summarize_normalization_head_precision.py": "811890f41b87449cca61af5b5cda10ffe5f4962aa36fb6cf22d09a37f557d8a3",
+    "tests/test_normalization_head_precision.py": "5130a2daca729697524ec9bb76b7826c74a81861104ea60c0ad51f3c7eeb17b2",
+    "tests/test_normalization_head_precision_summary.py": "56323a949aff0eb612013ae39388777888f55304a26d87b38fa66b8062fcb816"
+  },
+  "raw_publication": {
+    "schema": 1,
+    "kind": "lossless_normalization_head_raw_publication",
+    "compression": "gzip",
+    "path": "docs/research/checks/normalization-head-2026-10-05/natural-matched-seed-2027.json.gz",
+    "bytes": 5975145,
+    "sha256": "36d7efa1fad3497f1d7ba3b0b9fb61853408df4d6781e2d9c5046e9f9aa741a3",
+    "uncompressed_path": "docs/research/checks/normalization-head-2026-10-05/natural-matched-seed-2027.json",
+    "uncompressed_bytes": 152444374,
+    "uncompressed_sha256": "1cd4a0cbbf414f65a3712d2aaec07f6a35098a318bae5699f5e60d3302c4a0ee",
+    "round_trip_exact": true,
+    "scope": "Lossless transport of the original immutable report; no JSON reserialization or evidence removal."
+  },
+  "evidence": [
+    {
+      "path": "docs/research/normalization-head-view-2026-10-05.json",
+      "sha256": "aceee7a8559b09326a076869a8769439760014c0443b8c3fe63352e8af0052aa",
+      "website_file": "normalizationHeadEvidence.json",
+      "website_bytes_match": true,
+      "source_summary": {
+        "path": "docs/research/normalization-head-summary-2026-10-05.json",
+        "sha256": "fb937bf6eb7da7e8be13327dfb90e6efddb951e13943d1dd3d7bafe6cfe3ffed"
+      },
+      "declaration": {
+        "path": "docs/research/normalization-head-protocol-2026-10-05.json",
+        "sha256": "36f0e3738188c89b56a66e616b027040af5e606fce782aea13a340d1a924070b"
+      },
+      "raw_report": {
+        "path": "docs/research/checks/normalization-head-2026-10-05/natural-matched-seed-2027.json",
+        "sha256": "1cd4a0cbbf414f65a3712d2aaec07f6a35098a318bae5699f5e60d3302c4a0ee"
+      }
+    }
+  ],
+  "limits": [
+    "Software regression does not qualify a numerical treatment or establish language quality.",
+    "No production policy, new research training or official fused kernel is executed by this verification.",
+    "Historical checkpoints, sources and recorded negative results remain retained."
+  ]
+}
