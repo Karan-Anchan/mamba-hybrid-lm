@@ -24,3 +24,10 @@ scripts/study_normalization_head_precision.py text eol=lf
 scripts/summarize_normalization_head_precision.py text eol=lf
 tests/test_normalization_head_precision.py text eol=lf
 tests/test_normalization_head_precision_summary.py text eol=lf
+docs/research/checks/projection-precision-2026-10-06/*.json text eol=lf
+docs/research/checks/projection-precision-2026-10-06/*.json.gz -text
+docs/research/projection-precision*.json text eol=lf
+scripts/study_projection_precision.py text eol=lf
+scripts/summarize_projection_precision.py text eol=lf
+tests/test_projection_precision.py text eol=lf
+tests/test_projection_precision_summary.py text eol=lf

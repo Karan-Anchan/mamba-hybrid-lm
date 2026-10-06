@@ -1,0 +1,352 @@
+{
+  "schema": 1,
+  "kind": "projection_precision_regression_verification",
+  "date": "2026-10-06",
+  "execution_status": "completed",
+  "certified": false,
+  "regression": {
+    "passed": 1222,
+    "total": 1223,
+    "skipped": 1,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 243.692,
+    "junit_sha256": "9d25a6af36cb8d68b4b7b3e31ab42af8d054fd755c743a0602c3267496d97a44",
+    "scope": "Full project suite, including CUDA; one existing Windows file-symlink skip"
+  },
+  "focused_tests": {
+    "test_projection_precision": 37,
+    "test_projection_precision_summary": 77
+  },
+  "source_sha256": {
+    "src/model/norm.py": "dff7295a2219873072c5f3f31fc8c648241afc541ba4b2ed0fa1581d35649521",
+    "src/model/lm.py": "2e93a006b9bfce06afa200d9dd9326fe882336ec1687d54d12381031b2be58c8",
+    "src/model/mamba2.py": "69d661f50e31586c361e8ee64c794a836da461d2f870fb455c19b4b2d39f00fe",
+    "src/model/scan_backend.py": "b546506ccf5fb1b34b2cfe603829f439c0c90e230ccbed92101aa61c1e2abe3f",
+    "scripts/study_projection_precision.py": "1f3f69b629b84dbfa5a5271d4232fa5dbd613e7cac172925fc4f0edc444afd9e",
+    "scripts/summarize_projection_precision.py": "bac001a5ecacf9f834440e8cde812f85784462137a5233c8b89bf381fe7cde40",
+    "tests/test_projection_precision.py": "ae822881b24bf5758741708d60c7c4960feeb98d35de80ada6107991b0d985e9",
+    "tests/test_projection_precision_summary.py": "4dbd49a8ec2a449e51e5b541b98b36a79a40e6746d8c4710654c73048aebf679"
+  },
+  "raw_publication": {
+    "bytes": 3641586,
+    "compression": "gzip",
+    "kind": "lossless_projection_precision_raw_publication",
+    "path": "docs/research/checks/projection-precision-2026-10-06/natural-matched-seed-2027.json.gz",
+    "round_trip_exact": true,
+    "schema": 1,
+    "scope": "Complete original raw trace; lossless transport only. No scientific record or declared comparison changed.",
+    "sha256": "6ada18b7c64061d1f9d36008e60699d1731925dff72fcc23103b32dda81e1e0d",
+    "uncompressed_bytes": 94974553,
+    "uncompressed_path": "docs/research/checks/projection-precision-2026-10-06/natural-matched-seed-2027.json",
+    "uncompressed_sha256": "b29e3f05da2ce4337e468d2fa0118f84316262cca66ae74df03b354f4b211635"
+  },
+  "evidence": [
+    {
+      "path": "docs/research/projection-precision-view-2026-10-06.json",
+      "sha256": "35d141304e354aaa4dc96c3ac6f8e4d6a59c15ecaaaead01aabd335ea37ba62e",
+      "website_file": "projectionPrecisionEvidence.json",
+      "website_bytes_match": true,
+      "source_summary": {
+        "path": "docs/research/projection-precision-summary-2026-10-06.json",
+        "sha256": "b83243a847a4c418886782d18d3cf07aaa2bb8cfe1d54945a066bd60fdfb1b1b"
+      },
+      "declaration": {
+        "path": "docs/research/projection-precision-protocol-2026-10-06.json",
+        "sha256": "f3ec0d570e0ca526e82623d20bb69c135083fda60e96b5cb123d42ed1f2b21f1"
+      },
+      "raw_report": {
+        "path": "docs/research/checks/projection-precision-2026-10-06/natural-matched-seed-2027.json",
+        "sha256": "b29e3f05da2ce4337e468d2fa0118f84316262cca66ae74df03b354f4b211635"
+      }
+    }
+  ],
+  "gate_counts": {
+    "scope": "explicit recorded comparison leaves; completed cell gates remain false for incomplete cells; no quality-equivalence or production qualification",
+    "cells": {
+      "P0": {
+        "whole_model_comparisons": {
+          "full_vs_original": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.9582698345184326
+          },
+          "full_vs_decay_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.9370414018630981
+          },
+          "tokenwise_vs_own_full": {
+            "passed": 4,
+            "total": 6,
+            "worst_tolerance_ratio": 1.4896422624588013
+          },
+          "tokenwise_vs_original": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.9348093867301941
+          },
+          "tokenwise_vs_decay_baseline": {
+            "passed": 5,
+            "total": 6,
+            "worst_tolerance_ratio": 1.1804262399673462
+          },
+          "stateful_full_vs_own_full": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.4296227991580963
+          },
+          "stateful_full_vs_original": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.8548300266265869
+          },
+          "stateful_full_vs_decay_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.7122943997383118
+          },
+          "full_chunked_vs_own_full": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.4296227991580963
+          },
+          "full_chunked_vs_original": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.8548300266265869
+          },
+          "full_chunked_vs_decay_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.7122943997383118
+          },
+          "full_vs_projection_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.0
+          },
+          "tokenwise_vs_projection_baseline": {
+            "passed": 4,
+            "total": 6,
+            "worst_tolerance_ratio": 1.4896422624588013
+          },
+          "stateful_full_vs_projection_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.4296227991580963
+          },
+          "full_chunked_vs_projection_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.4296227991580963
+          }
+        },
+        "loss_comparisons": {
+          "full_vs_original": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.00022097099281381816
+          },
+          "full_vs_decay_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.0002568522759247571
+          },
+          "full_vs_projection_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.0
+          },
+          "chunked_vs_own_full": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.0
+          },
+          "chunked_vs_original": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.00022097099281381816
+          },
+          "chunked_vs_decay_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.0002568522759247571
+          },
+          "chunked_vs_projection_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.0
+          }
+        },
+        "whole_model": {
+          "passed": 4,
+          "total": 6
+        },
+        "all_recorded": {
+          "passed": 3,
+          "total": 6
+        }
+      },
+      "P1": {
+        "whole_model_comparisons": {
+          "full_vs_original": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.9439619183540344
+          },
+          "full_vs_decay_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.7784985303878784
+          },
+          "tokenwise_vs_own_full": {
+            "passed": 4,
+            "total": 6,
+            "worst_tolerance_ratio": 1.4381681680679321
+          },
+          "tokenwise_vs_original": {
+            "passed": 5,
+            "total": 6,
+            "worst_tolerance_ratio": 1.223740577697754
+          },
+          "tokenwise_vs_decay_baseline": {
+            "passed": 5,
+            "total": 6,
+            "worst_tolerance_ratio": 1.223740577697754
+          },
+          "stateful_full_vs_own_full": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.6482813954353333
+          },
+          "stateful_full_vs_original": {
+            "passed": 5,
+            "total": 6,
+            "worst_tolerance_ratio": 1.0009983777999878
+          },
+          "stateful_full_vs_decay_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.7784985303878784
+          },
+          "full_chunked_vs_own_full": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.6482813954353333
+          },
+          "full_chunked_vs_original": {
+            "passed": 5,
+            "total": 6,
+            "worst_tolerance_ratio": 1.0009983777999878
+          },
+          "full_chunked_vs_decay_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.7784985303878784
+          },
+          "full_vs_projection_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.8861058354377747
+          },
+          "tokenwise_vs_projection_baseline": {
+            "passed": 4,
+            "total": 6,
+            "worst_tolerance_ratio": 1.8597567081451416
+          },
+          "stateful_full_vs_projection_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.5451929569244385
+          },
+          "full_chunked_vs_projection_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.5451929569244385
+          }
+        },
+        "loss_comparisons": {
+          "full_vs_original": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.0
+          },
+          "full_vs_decay_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.0002568522759247571
+          },
+          "full_vs_projection_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.00022097100736573339
+          },
+          "chunked_vs_own_full": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.00022097099281381816
+          },
+          "chunked_vs_original": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.00022097099281381816
+          },
+          "chunked_vs_decay_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.0002568522759247571
+          },
+          "chunked_vs_projection_baseline": {
+            "passed": 6,
+            "total": 6,
+            "worst_tolerance_ratio": 0.0
+          }
+        },
+        "whole_model": {
+          "passed": 3,
+          "total": 6
+        },
+        "all_recorded": {
+          "passed": 3,
+          "total": 6
+        }
+      }
+    },
+    "original_repeat": {
+      "exact_passed": 6,
+      "total": 6
+    },
+    "prior_reproduction": {
+      "exact_passed": 6,
+      "total": 6
+    },
+    "frozen_full_projections": {
+      "passed": 648,
+      "total": 648,
+      "worst_tolerance_ratio": 0.028596708551049232
+    },
+    "frozen_prefix_projections": {
+      "passed": 576,
+      "total": 576,
+      "worst_tolerance_ratio": 0.03298810895722527
+    },
+    "prefix_upstream": {
+      "passed": 144,
+      "total": 144,
+      "worst_tolerance_ratio": 0.04424681141972542
+    }
+  },
+  "independent_export": {
+    "gzip_only_public_clone_exact_summary_and_view": true,
+    "process_hash_seed_independent_serialization_tested": true,
+    "loads_private_checkpoint_or_corpus": false,
+    "imports_measured_producer_or_torch": false
+  },
+  "limits": [
+    "Software regression does not qualify a numerical treatment or establish language quality.",
+    "Local projection precision improves, while complete route passes decrease from4/6 to3/6.",
+    "No production policy, training pilot or official fused kernel is accepted by this verification.",
+    "Historical checkpoints, source pins and recorded negative results remain retained."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "bytes": 3641586,
+  "compression": "gzip",
+  "kind": "lossless_projection_precision_raw_publication",
+  "path": "docs/research/checks/projection-precision-2026-10-06/natural-matched-seed-2027.json.gz",
+  "round_trip_exact": true,
+  "schema": 1,
+  "scope": "Complete original raw trace; lossless transport only. No scientific record or declared comparison changed.",
+  "sha256": "6ada18b7c64061d1f9d36008e60699d1731925dff72fcc23103b32dda81e1e0d",
+  "uncompressed_bytes": 94974553,
+  "uncompressed_path": "docs/research/checks/projection-precision-2026-10-06/natural-matched-seed-2027.json",
+  "uncompressed_sha256": "b29e3f05da2ce4337e468d2fa0118f84316262cca66ae74df03b354f4b211635"
+}
